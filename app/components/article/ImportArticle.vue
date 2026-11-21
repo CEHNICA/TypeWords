@@ -27,6 +27,7 @@
 import { BaseButton, BaseInput, Textarea, Toast } from '@/base'
 import { genArticleSectionData, splitCNArticle2, splitEnArticle2 } from '@/core/hooks/article.ts'
 import { useDataSyncPersistence } from '@/core/composables/useDataSyncPersistence.ts'
+import { syncArticleToServer } from '@/core/hooks/localArticles.ts'
 import { useBaseStore } from '@/core/stores/base.ts'
 import { getDefaultArticle, getDefaultDict } from '@/core/types'
 import { DictType } from '@/core/types/enum.ts'
@@ -265,7 +266,14 @@ async function submit() {
     base.article.studyIndex = base.article.bookList.length - 1
     await dataSync.saveDictState()
 
-    Toast.success(`导入成功！《${dict.name}》已加入我的书籍`)
+    // 再存一份到本地服务端 → 换个浏览器打开同一地址也能看到这本书
+    const synced = await syncArticleToServer(dict)
+
+    Toast.success(
+      synced
+        ? `导入成功！《${dict.name}》已加入我的书籍（所有浏览器可见）`
+        : `导入成功！《${dict.name}》已加入我的书籍（只存在这台浏览器里）`
+    )
     emit('imported', dict.id)
     reset()
     close()

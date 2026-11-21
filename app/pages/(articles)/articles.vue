@@ -16,6 +16,8 @@ import { watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { DictType } from '@/core/types/enum.ts'
 import { usePracticeArticlePersistence } from '@/core/composables/usePracticePersistence.ts'
+import { useDataSyncPersistence } from '@/core/composables/useDataSyncPersistence.ts'
+import { mergeServerArticles, pushLocalArticlesToServer, removeArticleFromServer } from '@/core/hooks/localArticles.ts'
 import ImportArticle from '@/components/article/ImportArticle.vue'
 
 dayjs.extend(isoWeek)
@@ -38,6 +40,7 @@ const router = useRouter()
 const runtimeStore = useRuntimeStore()
 let isSaveData = $ref(false)
 const articlePersistence = usePracticeArticlePersistence()
+const dataSync = useDataSyncPersistence()
 // 本地导入文章（上游「创建个人书籍」是死链：/book/new 会被 useGetDict 踢回列表，
 // 而且上游根本没有「新增文章」的 UI，建出来的书永远是空的）
 let showImport = $ref(false)
@@ -102,6 +105,16 @@ async function init() {
   if (d) {
     isSaveData = true
   }
+
+  // 服务端副本同步（本地导入文章 → 本地 dev server → 所有浏览器可见）：
+  // 导入的文章会再存一份到本地 dev server（data/local-articles.json），
+  // 这样**换个浏览器打开同一个地址也能看到**（不然各浏览器各存各的 IndexedDB，书架是空的）。
+  // 顺序：先推本机已有的书（老数据补推），再合并服务端的（拿到别人导入的）。
+  const pushed = await pushLocalArticlesToServer()
+  const merged = await mergeServerArticles()
+  if (pushed > 0 || merged > 0) {
+    await dataSync.saveDictState()
+  }
 }
 
 function startStudy() {
@@ -132,6 +145,11 @@ function handleBatchDel() {
   selectIds.forEach(id => {
     let r = base.article.bookList.findIndex(v => v.id === id)
     if (r !== -1) {
+      const book = base.article.bookList[r]
+      // 本地导入的书，服务端也有一份副本 → 一起删，不然换浏览器还看得见幽灵书
+      if (book.custom && !book.system) {
+        removeArticleFromServer(book.id)
+      }
       if (base.article.studyIndex === r) {
         base.article.studyIndex = -1
       }

@@ -465,6 +465,113 @@ def check_http():
             check(f"HTTP: {path} 路由可访问", False, str(e))
 
 
+# ------------------------------------------- 11. 服务端副本（跨浏览器可见）
+def check_server_copy():
+    """本地导入的文章只写浏览器 IndexedDB → 换个浏览器打开书架是空的。
+
+    解法：导入后把书再存一份到本地 dev server（data/local-articles.json），
+    文章页每次打开都拉一遍合并进书架 → 任何浏览器都能看到。
+    """
+    for rel in ("server/utils/localArticles.ts", "server/api/local-articles.get.ts",
+                "server/api/local-articles.post.ts", "server/api/local-articles.delete.ts"):
+        check(f"服务端副本: {rel} 存在", exists(os.path.join(ROOT, rel.replace("/", os.sep))))
+
+    hook = os.path.join(ROOT, "app", "core", "hooks", "localArticles.ts")
+    if not exists(hook):
+        check("服务端副本: 前端 hook 存在", False, "app/core/hooks/localArticles.ts 不存在")
+        return
+    src = read(hook)
+    check("服务端副本: 前端有拉取合并（mergeServerArticles）", "mergeServerArticles" in src)
+    check("服务端副本: 导入后推服务端（syncArticleToServer）", "syncArticleToServer" in src)
+    check("服务端副本: 本机旧书补推（pushLocalArticlesToServer）", "pushLocalArticlesToServer" in src)
+    check("服务端副本: 删除时同步删服务端（removeArticleFromServer）", "removeArticleFromServer" in src)
+    check(
+        "服务端副本: 合并时不覆盖本地同 id 的书（保留学习进度）",
+        "some(v => v.id === d.id)" in src,
+        "会覆盖本地已有书 → 学习进度被冲掉",
+    )
+    check(
+        "服务端副本: sections 运行时重算（genArticleSectionData）",
+        "genArticleSectionData" in src,
+        "sections 不落盘是上游设计，不重算则练习页没有逐句高亮",
+    )
+
+    vue = read(ARTICLES_VUE)
+    check("服务端副本: 文章页调用合并", "mergeServerArticles" in vue)
+    check("服务端副本: 文章页调用补推", "pushLocalArticlesToServer" in vue)
+    check(
+        "服务端副本: 删书时同步删服务端副本",
+        "removeArticleFromServer" in vue,
+        "不删 → 换浏览器还看得见幽灵书",
+    )
+
+    # server/api 里引用 server/utils 必须是 ../utils（写成 ../../utils 会 RollupError）
+    for rel in ("server/api/local-articles.get.ts", "server/api/local-articles.post.ts",
+                "server/api/local-articles.delete.ts"):
+        p = os.path.join(ROOT, rel.replace("/", os.sep))
+        if not exists(p):
+            continue
+        s = read(p)
+        check(
+            f"服务端副本: {os.path.basename(rel)} 引用 utils 路径正确",
+            "../utils/localArticles" in s and "../../utils" not in s,
+            "写 ../../utils 会 RollupError「Could not resolve」且首屏卡死",
+        )
+
+
+def check_server_copy_http():
+    """打真接口：GET 要 200 且返回数组；POST/DELETE 要真的增删。"""
+    import json
+
+    def req(method, url, payload=None):
+        data = json.dumps(payload).encode() if payload is not None else None
+        r = urllib.request.Request(url, data=data, method=method)
+        if data:
+            r.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(r, timeout=15) as resp:
+            return resp.status, json.loads(resp.read().decode())
+
+    try:
+        status, data = req("GET", BASE_URL + "/api/local-articles")
+        check("HTTP: GET /api/local-articles 返回数组", status == 200 and isinstance(data, list),
+              f"status={status}")
+    except Exception as e:  # noqa: BLE001
+        check("HTTP: GET /api/local-articles 可访问", False, str(e))
+        return
+
+    probe = {
+        "id": "__healthcheck_probe__",
+        "name": "体检探针",
+        "articles": [{"title": "t", "titleTranslate": "t", "text": "x.", "textTranslate": "x."}],
+    }
+    try:
+        status, data = req("POST", BASE_URL + "/api/local-articles", probe)
+        check("HTTP: POST /api/local-articles 能写入", status == 200 and data.get("ok"), f"{status} {data}")
+    except Exception as e:  # noqa: BLE001
+        check("HTTP: POST /api/local-articles 可访问", False, str(e))
+        return
+
+    try:
+        status, data = req("GET", BASE_URL + "/api/local-articles")
+        has = any(v.get("id") == probe["id"] for v in data)
+        check("HTTP: POST 后 GET 能读回", has, "写进去读不回来")
+    except Exception as e:  # noqa: BLE001
+        check("HTTP: POST 后 GET 能读回", False, str(e))
+
+    try:
+        status, data = req("DELETE", BASE_URL + "/api/local-articles?id=" + probe["id"])
+        check("HTTP: DELETE /api/local-articles 能删", status == 200 and data.get("ok"), f"{status} {data}")
+    except Exception as e:  # noqa: BLE001
+        check("HTTP: DELETE /api/local-articles 可访问", False, str(e))
+
+    try:
+        status, data = req("GET", BASE_URL + "/api/local-articles")
+        gone = not any(v.get("id") == probe["id"] for v in data)
+        check("HTTP: DELETE 后 GET 读不到", gone, "删了还在 → 幽灵书")
+    except Exception as e:  # noqa: BLE001
+        check("HTTP: DELETE 后 GET 读不到", False, str(e))
+
+
 def main():
     print("=" * 68)
     print("TypeWords「本地导入文章」体检器")
@@ -480,8 +587,10 @@ def main():
     check_locale()
     check_translate()
     check_ui_layout()
+    check_server_copy()
     if "--http" in sys.argv:
         check_http()
+        check_server_copy_http()
 
     failed = 0
     for name, ok, detail in results:

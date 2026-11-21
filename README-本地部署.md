@@ -331,7 +331,40 @@ docker run -p 5000:5000 libretranslate/libretranslate
 
 ```powershell
 cd C:\Users\17321\Documents\破甲\typewords-src
-python _tools\check_article_import.py --http     # 60 项
+python _tools\check_article_import.py --http     # 81 项
+```
+
+### 跨浏览器可见：服务端副本（2026-11-21 新增）
+
+**问题**：导入的文章原本只写浏览器 IndexedDB。IndexedDB **按浏览器 profile 隔离** ——
+在内置浏览器导入一篇，外置浏览器（Edge/Chrome）打开同一个 `http://localhost:5567`，
+「我的书籍」是空的，看着就像导入失败。
+
+**解法**：导入成功后再把书存一份到**本地 dev server 的磁盘**（`data/local-articles.json`），
+文章页每次打开都拉一遍合并进书架。
+
+| 文件 | 作用 |
+|---|---|
+| `server/utils/localArticles.ts` | 读写 `data/local-articles.json` |
+| `server/api/local-articles.get.ts` | `GET` 拿全部服务端副本 |
+| `server/api/local-articles.post.ts` | `POST` 存一本（同 id 覆盖） |
+| `server/api/local-articles.delete.ts` | `DELETE ?id=` 删一本 |
+| `app/core/hooks/localArticles.ts` | 前端：`mergeServerArticles` 拉、`syncArticleToServer` 推、`pushLocalArticlesToServer` 补推、`removeArticleFromServer` 删 |
+
+**行为约定**：
+- 合并时**不覆盖**本地已有的同 id 书 → 导入那台浏览器的**学习进度照常保留**；
+- 服务端只存原文 + 译文，`sections` 运行时由 `genArticleSectionData` 重算（上游设计，不落盘）；
+- **本机旧书自动补推**：进文章页时把本机已有但服务端没有的书推上去（老数据不用手动搬）；
+- 删书时**同步删服务端副本**，不然换浏览器还看得见幽灵书；
+- 静态部署（没有 server runtime）时接口 404，前端**静默降级**成「只存本浏览器」，不报错。
+
+**本地单机单人用，不做鉴权。**
+
+跨浏览器闭环验收脚本（干净 profile = 模拟另一个浏览器）：
+
+```powershell
+node C:\Users\17321\Documents\破甲\typewords-src\_tools\_check_cross_browser.js
+# 10 项：书架可见 / 详情页不空 / 练习页有中英 / 删书同步删服务端 / 写回不丢数据
 ```
 
 ## 英语音标页（本地新增，2026-11-20）

@@ -61,8 +61,12 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `app/pages/(articles)/articles.vue` | 死链「创建个人书籍」换成「导入文章」入口；导入成功切当前书 |
 | `app/core/hooks/dict.ts` | 修断点：`loadDict()` 原来只在远程 fetch 分支赋 `runtimeStore.editDict`，本地导入的书自带 articles → 详情页显示空书。补 else 分支 |
 | `i18n/locales/*.json` | 14 个语言包各加 `import_article`（zh=导入文章 / tw=匯入文章 / 其余=Import Article） |
-| `_tools/check_article_import.py` | 新增：文章导入链路体检器 60 项（39 导入 + 12 自动翻译 + 9 弹窗界面布局） |
+| `_tools/check_article_import.py` | 新增：文章导入链路体检器 **81 项**（39 导入 + 12 自动翻译 + 9 弹窗界面布局 + 21 服务端副本/跨浏览器） |
 | `_tools/samples/my_article_en.txt` / `_tools/samples/my_article_zh.txt` | 导入功能的测试样本（9 行英文 / 9 行中文，一一对应） |
+| `server/utils/localArticles.ts` | 新增：服务端副本读写 `data/local-articles.json`（**IndexedDB 按浏览器 profile 隔离 → 换个浏览器书架是空的**，靠这个解决） |
+| `server/api/local-articles.get.ts` / `.post.ts` / `.delete.ts` | 新增：服务端副本的 GET / POST / DELETE 接口 |
+| `app/core/hooks/localArticles.ts` | 新增：`mergeServerArticles` 拉取合并 + `syncArticleToServer` 导入后推送 + `pushLocalArticlesToServer` 本机旧书补推 + `removeArticleFromServer` 删书同步 |
+| `_tools/_check_cross_browser.js` | 新增：跨浏览器闭环验收脚本（干净 profile 模拟另一个浏览器，10 项） |
 
 ## 体检器（改测试链路必跑）
 
@@ -71,7 +75,7 @@ cd C:\Users\17321\Documents\破甲\typewords-src
 python _tools\check_test_flow.py --http     # 17 项，全绿 exit 0
 python _tools\check_placement.py --http    # 32 项，全绿 exit 0
 python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
-python _tools\check_article_import.py --http # 60 项，全绿 exit 0
+python _tools\check_article_import.py --http # 81 项，全绿 exit 0
 ```
 
 ## 硬规矩（补）
@@ -109,6 +113,19 @@ python _tools\check_article_import.py --http # 60 项，全绿 exit 0
 19. **Playwright 独立上下文是干净 profile，没有 IndexedDB**：只能用来验样式和跑「临时导一篇」
     的功能闭环，**不能用它判断用户书架里有没有某本书**（用户数据在浏览器真实 profile 的 IndexedDB
     `keyval-store` → `keyval` 里）。截图脚本：`_tools/_shot_dialog.js`。
+20. **新增/修改 `server/` 目录下的文件后必须重启 dev server**（Nitro 才会重新加载路由），
+    热更新不管用；重启命令见 README「启动」小节。
+21. **`server/api/*.ts` 引用 `server/utils/*` 必须写 `../utils/xxx`**：写成 `../../utils/xxx`
+    会 RollupError「Could not resolve」，而且 **dev server 会卡住首屏**（接口请求全超时，
+    表现为「整页打不开」，不是报错）。
+22. **本地导入文章的跨浏览器可见靠服务端副本**（`data/local-articles.json`）：
+    - 合并时**不覆盖**本地同 id 的书 → 学习进度不能被冲掉；
+    - `sections` 不落盘，运行时用 `genArticleSectionData` 重算；
+    - 删书必须同步 `DELETE /api/local-articles`，否则换浏览器还看得见幽灵书；
+    - 静态部署没 server runtime → 接口 404，**前端必须静默降级**成「只存本浏览器」，不报错。
+23. **`mcp_browser` 的 `run_script` 在本环境不回传返回值**（`pageEvaluate.calls` 恒为 0），
+    `page.evaluate` 实际没执行 → **别指望用它读写页面数据**。要在页面里取数据，走
+    `_tools/` 下的 Playwright 脚本；要在页面里执行动作，走 `inspect` + `click`/`fill`。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）
@@ -117,3 +134,4 @@ python _tools\check_article_import.py --http # 60 项，全绿 exit 0
   `app/pages/(words)/dict.vue` 里的 `goImportPage()` 会跳 `/import`，那是**云端功能**，本地纯离线模式用不到。
 - 自定义词典/个人词库依赖 Supabase（`runtimeConfig.public.apiBase`），本地没填就不可用。
 - 线上站比 master 新，`dev` 分支页面多但资源走 CDN，不能直接混用。
+
