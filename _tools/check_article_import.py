@@ -390,7 +390,70 @@ def check_translate():
     )
 
 
-# ---------------------------------------------------------------- 9. HTTP
+# ---------------------------------------------------------------- 9. 弹窗界面布局
+def check_ui_layout():
+    """导入弹窗的界面结构：上一版样式乱（标签左右混排、按钮三种样式、说明臃肿、状态行冗余）。
+
+    规矩：
+      - Header / Body / Footer 三段式；
+      - 原文、译文放同一个 Grid 容器，列宽共享 → 两行「选择文件」严格纵向对齐；
+      - 同级操作统一成同款描边按钮，主按钮用品牌蓝 #409eff；
+      - 选中的文件名做成胶囊 tag 贴在标签旁边，不再单起一行「已选原文：…｜译文：…」；
+      - 「自建翻译服务」是低频高级项，默认折叠收起（details）。
+    """
+    if not exists(IMPORT_VUE):
+        check("导入组件存在（app/components/article/ImportArticle.vue）", False, "文件不存在")
+        return
+    src = strip_comments(read(IMPORT_VUE))
+
+    check(
+        "弹窗是 Header / Body / Footer 三段式",
+        all(x in src for x in ("ia-head", "ia-body", "ia-foot")),
+        "三段缺一块，视觉上就没法分层",
+    )
+    check(
+        "原文、译文在同一个 Grid 容器里（列宽共享 → 两个「选择文件」纵向对齐）",
+        "ia-texts" in src and "grid-template-columns" in src,
+        "两栏各写各的，按钮永远对不齐",
+    )
+    check(
+        "两个「选择文件」按钮都在原文/译文这一格里",
+        src.count("选择文件") == 2 and src.count("ia-btn") >= 2,
+        f"「选择文件」出现 {src.count('选择文件')} 次，期望 2 次",
+    )
+    check(
+        "删掉了冗余的底部状态行（「已选原文：… ｜ 译文：…」）",
+        "已选原文" not in src,
+        "状态行又长又占地方，改用文件名胶囊",
+    )
+    check(
+        "选中的文件名做成胶囊 tag",
+        "ia-tag" in src and "textFileName" in src and "translateFileName" in src,
+        "选完文件看不出选了哪个",
+    )
+    check(
+        "「自建翻译服务」默认折叠收起（details）",
+        "<details" in src and "ia-advanced" in src and "<summary>" in src,
+        "低频高级项默认摊开，主界面被撑得又长又乱",
+    )
+    check(
+        "主按钮用品牌蓝 #409eff",
+        "--btn-primary: #409eff" in src,
+        "默认的蓝灰 rgb(75,85,99) 显脏，跟项目强调色不统一",
+    )
+    check(
+        "间距走 8px 栅格",
+        "column-gap: 8px" in src and "row-gap" in src,
+        "间距随手写的，左右上下对不齐",
+    )
+    check(
+        "内容区可滚动 + 弹窗有最大高度（长文不会把底部按钮顶飞）",
+        "overflow-y: auto" in src and "max-height" in src,
+        "内容一长就溢出，底部按钮和输入框打架",
+    )
+
+
+# ---------------------------------------------------------------- 10. HTTP
 def check_http():
     for path in ("/articles", "/book-list"):
         try:
@@ -416,6 +479,7 @@ def main():
     check_article_format()
     check_locale()
     check_translate()
+    check_ui_layout()
     if "--http" in sys.argv:
         check_http()
 

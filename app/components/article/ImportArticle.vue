@@ -16,6 +16,13 @@
  *   - splitEnArticle2 处理了缩写(Mr./U.S.)、数字、千分位、直引号，粘在一起的一整段也能切；
  *   - splitCNArticle2 走 Intl.Segmenter('zh-CN')，中文断句才对；
  *   - genArticleSectionData 生成 sections（练习页逐句高亮/打点全靠它）。
+ *
+ * 界面结构（2026-11-21 重做，之前那版样式乱：标签左右混排、按钮三种样式、说明臃肿）：
+ *   - Header / Body / Footer 三段式，8px 栅格；
+ *   - 原文、译文两栏用同一个 CSS Grid，「选择文件」两行严格纵向对齐；
+ *   - 同级操作统一成同款描边按钮，主按钮用品牌蓝 #409eff；
+ *   - 选中的文件名做成胶囊 tag 贴在标签旁边，不再单起一行状态栏；
+ *   - 「自建翻译服务」是低频高级项，默认折叠收起。
  */
 import { BaseButton, BaseInput, Textarea, Toast } from '@/base'
 import { genArticleSectionData, splitCNArticle2, splitEnArticle2 } from '@/core/hooks/article.ts'
@@ -271,64 +278,85 @@ async function submit() {
 </script>
 
 <template>
-  <Dialog :model-value="props.modelValue" @close="close" :footer="false">
+  <Dialog :model-value="props.modelValue" @close="close" :footer="false" :header="false">
     <div class="import-article">
-      <div class="title text-xl mb-1">导入文章</div>
-      <div class="text-sm color-gray mb-4">
-        选一个 txt / md 文件当原文（一句话一行或整段都行，会自动断句）；译文可以再选一个中文文件，也可以直接粘。译文写成一句一行，就和原文句子一一对应。填完原文点「翻译成中文」能自动生成译文（一句一行），再自己改也来得及。
+      <!-- Header -->
+      <div class="ia-head">
+        <div class="ia-title">导入文章</div>
+        <div class="ia-sub">选一个 txt / md 当原文，句子会自动断好；译文可选。</div>
       </div>
 
-      <div class="flex gap-4">
-        <div class="grow">
-          <div class="text-sm color-gray mb-1">书籍名</div>
-          <BaseInput v-model="bookName" placeholder="例如：小学英语课文" />
+      <!-- Body -->
+      <div class="ia-body">
+        <div class="ia-grid2">
+          <div class="ia-field">
+            <div class="ia-label">书籍名</div>
+            <BaseInput v-model="bookName" placeholder="例如：小学英语课文（导入的文章都归到这本书下）" />
+          </div>
+          <div class="ia-field">
+            <div class="ia-label">文章标题</div>
+            <BaseInput v-model="articleTitle" placeholder="例如：Lesson 1 Good Morning" />
+          </div>
         </div>
-        <div class="grow">
-          <div class="text-sm color-gray mb-1">文章标题</div>
-          <BaseInput v-model="articleTitle" placeholder="例如：Lesson 1 Good Morning" />
+
+        <div class="ia-field">
+          <div class="ia-label">标题翻译<span class="ia-flag">可选</span></div>
+          <BaseInput v-model="articleTitleTranslate" placeholder="例如：第一课 早上好" />
         </div>
-      </div>
 
-      <div class="text-sm color-gray mt-3 mb-1">标题翻译（可选）</div>
-      <BaseInput v-model="articleTitleTranslate" placeholder="例如：第一课 早上好" />
-
-      <div class="flex items-center justify-between mt-4 mb-1">
-        <div class="text-sm color-gray">原文（必填）</div>
-        <div class="flex items-center gap-2">
-          <label class="base-button normal text cursor-pointer">
+        <!-- 原文 / 译文：同一个 Grid 容器，列宽共享，两行的「选择文件」严格纵向对齐 -->
+        <div class="ia-texts">
+          <div class="ia-label">
+            原文<span class="ia-flag need">必填</span>
+            <span v-if="textFileName" class="ia-tag">{{ textFileName }}</span>
+          </div>
+          <label class="ia-btn">
             选择文件
             <input type="file" accept=".txt,.md,.markdown" class="hidden" @change="onTextFileChange" />
           </label>
-          <BaseButton size="small" type="info" :loading="translating" @click="translateToChinese">
-            翻译成中文
-          </BaseButton>
+          <BaseButton type="info" :loading="translating" @click="translateToChinese">翻译成中文</BaseButton>
+
+          <Textarea
+            v-model="rawText"
+            :autosize="{ minRows: 6, maxRows: 14 }"
+            class="ia-span"
+            placeholder="选文件或直接粘贴英文原文，一句一行或整段都行"
+          />
+
+          <div class="ia-label">
+            译文<span class="ia-flag">可选</span>
+            <span v-if="translateFileName" class="ia-tag">{{ translateFileName }}</span>
+          </div>
+          <label class="ia-btn">
+            选择文件
+            <input type="file" accept=".txt,.md,.markdown" class="hidden" @change="onTranslateFileChange" />
+          </label>
+          <span></span>
+
+          <Textarea
+            v-model="rawTranslate"
+            :autosize="{ minRows: 4, maxRows: 10 }"
+            class="ia-span"
+            placeholder="选文件或直接粘贴中文译文，写成一句一行就和原文句子一一对应"
+          />
         </div>
-      </div>
-      <Textarea v-model="rawText" :autosize="false" class="h-40" placeholder="选文件或直接粘贴英文原文" />
 
-      <div class="flex items-center justify-between mt-4 mb-1">
-        <div class="text-sm color-gray">译文（可选，一句一行，和原文句子一一对应）</div>
-        <label class="base-button normal text cursor-pointer">
-          选择文件
-          <input type="file" accept=".txt,.md,.markdown" class="hidden" @change="onTranslateFileChange" />
-        </label>
-      </div>
-      <Textarea v-model="rawTranslate" :autosize="false" class="h-28" placeholder="选文件或直接粘贴中文译文" />
-
-      <div class="flex items-center gap-3 mt-2">
-        <div class="text-sm color-gray shrink-0">自建翻译服务（可选）</div>
-        <BaseInput
-          :model-value="translateEndpoint"
-          placeholder="LibreTranslate / Argos 的地址，如 http://localhost:5000；留空就用谷歌"
-          @update:model-value="onEndpointChange"
-        />
+        <!-- 低频高级项：默认收起 -->
+        <details class="ia-advanced">
+          <summary>高级设置：自建翻译服务</summary>
+          <div class="ia-advanced-body">
+            <BaseInput
+              :model-value="translateEndpoint"
+              placeholder="LibreTranslate / Argos 地址，如 http://localhost:5000；留空就用谷歌"
+              @update:model-value="onEndpointChange"
+            />
+            <div class="ia-hint">填了就走开源自建的翻译服务（LibreTranslate / Argos Translate），留空走谷歌。</div>
+          </div>
+        </details>
       </div>
 
-      <div class="text-sm color-gray mt-3">
-        已选原文：{{ textFileName || '（未选）' }} ｜ 译文：{{ translateFileName || '（未选）' }}
-      </div>
-
-      <div class="flex gap-3 justify-end mt-4">
+      <!-- Footer -->
+      <div class="ia-foot">
         <BaseButton type="info" @click="close">取消</BaseButton>
         <BaseButton type="primary" :loading="saving" @click="submit">导入</BaseButton>
       </div>
@@ -338,7 +366,178 @@ async function submit() {
 
 <style scoped lang="scss">
 .import-article {
-  width: 46rem;
-  max-width: 90vw;
+  /* 主按钮换品牌蓝，和项目里 #409eff 的强调色统一 */
+  --btn-primary: #409eff;
+  --btn-primary-hover: #66b1ff;
+  --btn-primary-disabled: #a0cfff;
+
+  display: flex;
+  flex-direction: column;
+  width: 48rem;
+  max-width: 92vw;
+  max-height: 80vh;
+  min-width: 0;
+}
+
+.ia-head {
+  padding: 24px 24px 0;
+  padding-right: 56px; /* 给右上角关闭按钮让位 */
+
+  .ia-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--color-main-text);
+  }
+
+  .ia-sub {
+    margin-top: 4px;
+    font-size: 0.85rem;
+    color: var(--color-main-text);
+    opacity: 0.65;
+  }
+}
+
+.ia-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 24px 0;
+}
+
+.ia-field {
+  margin-bottom: 16px;
+
+  .ia-label {
+    margin-bottom: 8px;
+  }
+}
+
+.ia-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 16px;
+}
+
+/* 标签 + 操作按钮 */
+.ia-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.85rem;
+  line-height: 20px; /* 和 2rem 高的按钮同高，文字基线才对齐 */
+  color: var(--color-main-text);
+}
+
+.ia-flag {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-main-text);
+  opacity: 0.7;
+
+  &.need {
+    background: rgba(64, 158, 255, 0.12);
+    color: #409eff;
+    opacity: 1;
+  }
+}
+
+/* 文件名胶囊 */
+
+.ia-tag {
+  display: inline-block;
+  max-width: 100%;
+  margin-left: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 1px 10px;
+  border-radius: 999px;
+  background: rgba(64, 158, 255, 0.1);
+  color: #409eff;
+}
+
+/* 描边按钮：和 BaseButton type=info 同一套观感 */
+.ia-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  padding: 0 0.9rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 0.3rem;
+  border: 1px solid var(--color-main-text);
+  background: var(--btn-info, white);
+  color: var(--color-main-text);
+
+  &:hover {
+    background: var(--btn-info-hover, #eaeaea);
+  }
+}
+
+/* 原文 / 译文：同一个 Grid 容器，列宽共享，两行的「选择文件」严格纵向对齐 */
+.ia-texts {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  column-gap: 8px;
+  row-gap: 16px;
+  align-items: center;
+
+  .ia-span {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
+.ia-advanced {
+  margin-bottom: 16px;
+  padding-top: 16px;
+
+  summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--color-main-text);
+    opacity: 0.7;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::before {
+      content: '▸ ';
+    }
+  }
+
+  &[open] summary::before {
+    content: '▾ ';
+  }
+
+  .ia-advanced-body {
+    margin-top: 12px;
+  }
+
+  .ia-hint {
+    margin-top: 8px;
+    font-size: 0.78rem;
+    color: var(--color-main-text);
+    opacity: 0.6;
+  }
+}
+
+.ia-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 24px 24px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 </style>

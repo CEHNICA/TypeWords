@@ -297,7 +297,7 @@ python _tools\check_book_review.py --http     # 38 项
 > ⚠️ **命令行直连 `translate.googleapis.com` 会返回 429**（出口 IP 被限），**浏览器里反而通**。
 > 所以别在终端里试完就断定「接口挂了」—— 本机实测：PowerShell 429，浏览器 fetch 200 + CORS 放行。
 
-**想换成开源自建的**：在弹窗底部「自建翻译服务（可选）」填地址，就改走 LibreTranslate / Argos
+**想换成开源自建的**：在弹窗底部展开「高级设置：自建翻译服务」填地址，就改走 LibreTranslate / Argos
 Translate 的 HTTP 接口（地址存 localStorage，下次导入还在）：
 
 ```powershell
@@ -313,11 +313,25 @@ docker run -p 5000:5000 libretranslate/libretranslate
 
 慢是正常的：25 句大约 10 秒（按钮会转圈）。翻译失败会弹提示并保留你原来粘的译文，可以直接手动改。
 
+### 导入弹窗的界面（2026-11-21 重做）
+
+上一版弹窗样式乱，这轮按视觉评审重做了：
+
+| 改动 | 说明 |
+|---|---|
+| Header / Body / Footer 三段式 | 标题区一句话说明，底部操作栏独立，不再是一坨 |
+| 8px 栅格 | 标签↔输入框 8px，块间距 16px，弹窗内边距 24px |
+| 原文 / 译文同一个 Grid | 两行的「选择文件」按钮**严格纵向对齐**（之前一个左飘一个右飘） |
+| 按钮统一 | 同级操作都是同款描边按钮；主按钮「导入」换品牌蓝 `#409eff`（默认的蓝灰太脏） |
+| 文件名胶囊 | 选完文件在标签旁边显示蓝色胶囊 tag；删掉了原来那行冗余的「已选原文：… ｜ 译文：…」 |
+| 高级项折叠 | 「自建翻译服务」默认收起成一行折叠标题，低频功能不占地方 |
+| 长文不顶飞 | 弹窗有最大高度 + 内容区独立滚动，输入再多也不会把底部按钮挤出屏幕 |
+
 体检器（改这块后必跑）：
 
 ```powershell
 cd C:\Users\17321\Documents\破甲\typewords-src
-python _tools\check_article_import.py --http     # 51 项
+python _tools\check_article_import.py --http     # 60 项
 ```
 
 ## 英语音标页（本地新增，2026-11-20）
