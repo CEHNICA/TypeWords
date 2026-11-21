@@ -1,0 +1,9 @@
+# 这些是要被脚本按字节改写/比对的文件，行尾必须钉死 LF。
+# 仓库整体没开 text=auto（core.autocrlf=true），Windows 上 checkout 会转成 CRLF，
+# 导致「本地改完 → 提交 → 再 checkout」出现整文件行尾抖动。
+public/list/*.json text eol=lf
+scripts/*.js text eol=lf
+_tools/*.js text eol=lf
+_tools/*.mjs text eol=lf
+_tools/*.py text eol=lf
+*.md text eol=lf

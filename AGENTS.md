@@ -45,7 +45,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | 位置 | 改动 |
 |---|---|
 | `package.json` | 加了 `-D pathe`（上游漏写，重装依赖报 `Cannot find module 'pathe'`） |
-| `public/list/*.json` | 补全完整索引（上游只有 1 条 CET-4） |
+| `public/list/*.json` | 补全完整索引（上游只有 1 条 CET-4）；后加：**「青少年英语」六~九年级课本册打 tag「六~九年级」并按年级重排**（见下面专门一节） |
 | `public/sound/phonetics`、`public/video/phonetics`、`public/libs`、`public/imgs` | 从镜像灌入 |
 | `app/pages/phonetics.vue` + `app/core/data/phonetics.ts` + `app/assets/css/phonetics.scss` | 新增音标教学页（上游没有） |
 | `app/layouts/default.vue` | 侧边栏/移动端加「音标」入口 |
@@ -169,6 +169,38 @@ $env:TTB_REJECT_ELLIPSIS='1'; $env:TTB_REJECT_LOWER='1'; $env:TTB_MIN_WORDS='4'
 - 跟打页路由 `/practice-articles/{bookId}`，**bookId 是书 id**，篇内定位靠数组下标。
 - 标题格式：`Unit N · Lesson N 课名`（小学）/ 纯话题标题（初中）。
 
+## 六~九年级课本词表可见性（2026-11-21 新增）
+
+用户反馈「六年级到九年级的单词好像还没弄上」。**查完发现：词库数据一册不缺**
+（207 册全在盘且非空，六~九年级 PEP/外研/冀教/上海/牛津全都有）。真正的毛病是**可见性**：
+
+- `app/components/list/DictGroup.vue:15-19` —— `currentTag = tagList[0]`，
+  每个分类**默认只露第一个 tag 页签**。
+- `app/pages/(words)/dict-list.vue:33-58` `groupByDictTags()` —— 页签 key 顺序 =
+  「按数组顺序遍历，每册把自己 push 进它**所有** tag 的桶」。
+- 于是「青少年英语」分类第一个页签是「通用」（高考 3500 / 中考核心词…只有 4 册），
+  PEP/外研/冀教的六~九年级课本册**全藏在后面页签里**，用户以为没弄上。
+
+修法走**数据层，不动前端**：
+
+- `scripts/tag-junior-textbooks.js` 给 30 册六~九年级课本册打上 tag **「六~九年级」**
+  并放在 `tags[0]`，同时把「青少年英语」分类里这 30 册挪到数组最前面，
+  组内按 **(年级, 册序, 教材)** 排：六上 → 六下 → 七上 → 七下 → 八上 → 八下 →
+  九全 → 九上 → 九下。
+  → 该分类的第一个页签变成「六~九年级」，打开就看得见，且顺序按年级。
+- 30 册 = 人教 PEP 7 + 人教新起点 2 + 外研 8 + 新外研 2 + 外研新起点 2 +
+  冀教 7 + 上海版 1 + 上海初中牛津 1。
+- 「通用/新概念英语/其他」和高中册**不进**这个 tag。
+
+**坑**：
+
+1. 人教 PEP 的册子名只有「六年级上」这种光秃秃的名字，**认不出「人教版」三个字**，
+   只能靠 `enName`（`liu1/qi1/ba1/jiu/…`）认；漏了它会少 7 册。
+2. 「上海初中牛津词汇」名字里没有年级，要按 `enName === 'SHjuniormiddleOxford'` 特判成初中通用。
+3. 数组重排**安全**：所有页面都是按 id 查（`find` / `Map`），没有按下标取的地方。
+4. `public/list/word.json` 是**本地补全的索引**，日后从镜像版重灌词库会被覆盖 →
+   覆盖后跑 `python _tools\check_dict_list.py` 会立刻报红，重跑上面的脚本即可恢复。
+
 ## 体检器（改测试链路必跑）
 
 ```powershell
@@ -179,6 +211,7 @@ python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
 python _tools\check_article_import.py --http # 81 项，全绿 exit 0
 python _tools\check_word_lookup.py --http     # 89 项（查词），全绿 exit 0
 python _tools\check_textbook_articles.py --http # 280 项（莱芜课本课文），全绿 exit 0
+python _tools\check_dict_list.py --http         # 63 项（词典列表/六~九年级可见性），全绿 exit 0
 python _tools\_tb_revert_check.py             # 课文体检器退回验证（坏样本精确命中），全绿 exit 0
 ```
 
@@ -189,6 +222,9 @@ python _tools\_tb_revert_check.py             # 课文体检器退回验证（�
 `node _tools\_check_placement_advice.js` 跑报告页文案实测，
 `node _tools\_shot_placement.js` 出「答错后 / 报告页」两张截图给视觉模型验收，
 `node _tools\_shot_setup.js` 出 setup 页桌面 + 窄屏截图给视觉模型验收。
+`node _tools\_check_dict_visibility.js` 逐个分类、逐个标签页点开，扒出**每个页签下真正可见的册子**
+（查「某类词到底露不露得出来」用它，别只读 JSON），
+`node _tools\_shot_dict_list.js` 给词典列表页出截图给视觉模型验收。
 
 词典扩充（改了词库/查词就重跑）：
 
@@ -299,6 +335,21 @@ node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
       线上 `list/article.json` 只有 NCE_1~4，**没有 1~9 年级课本课文数据源**（要课文就没辙）。
     - 尺子假阳性坑：**逐级诊断**模式的报告文案是「断层在这一级」，**自适应定位**模式才是
       「定位到这一级」。测文案前先切对模式，否则尺子自己给自己判红。
+
+29. **词典列表「默认只露第一个 tag 页签」（2026-11-21）**：
+    - `DictGroup.vue` 的 `currentTag = tagList[0]`，页签 key 顺序由 `word.json` 的**数组顺序**
+      + 每册 `tags` 的顺序决定 → 想让某组默认可见，就让它在数组里靠前、且 tag 排 `tags[0]`。
+    - `groupByDictTags()` 把每册 push 进它**所有** tag 的桶 → 打一个 tag 不会从别的 tag 里消失。
+    - **数组重排安全**：全项目都是按 id 查（`find`/`Map`），没有按下标取词库的地方。
+    - `public/list/word.json` 是**本地补全的索引**，日后从镜像版重灌会被覆盖 →
+      覆盖后 `python _tools\check_dict_list.py` 立刻报红，重跑 `node scripts\tag-junior-textbooks.js` 恢复。
+    - **行尾**：仓库 `core.autocrlf=true`，Windows 上 `git checkout` 会把工作区变成 CRLF →
+      已加 `.gitattributes` 把 `public/list/*.json`、`scripts/*.js`、`_tools/*.py` 钉成 LF；
+      体检器对行尾按「统一即可」判，不硬钉 LF（那不是缺陷，是环境差异）。
+30. **人教 PEP 的册子名认不出教材名**：`六年级上` / `七年级上` 这种名字里没有「人教版」，
+    靠 `enName`（`liu1/qi1/ba1/jiu/san1…wu2`）才认得出；
+    「上海初中牛津词汇」名字里没年级，要按 `enName === 'SHjuniormiddleOxford'` 特判。
+    → 写按教材分类的脚本时漏掉这条会少 7 册。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）
