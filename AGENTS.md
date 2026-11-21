@@ -89,6 +89,11 @@ python _tools\check_article_import.py --http # 39 项，全绿 exit 0
     上游 NCE 数据就是这结构；写成 `\n` 分句 → 跟打页译文跟英文错位。
 13. **i18n 语言包是 Tab 缩进**：`json.dumps(indent=2)` 重写会造成上千行 diff。
     加 key 要用**文本插入**（`head + ',\n\t"key": "value"\n' + tail`）再 `json.load()` 校验。
+14. **本项目 `BaseButton` 渲染出来是 `<span>`，不是 `<button>`**：浏览器自动化里
+    `querySelectorAll('button')` 找不到，得按文本找 `span` 再 `.click()`。
+15. **本机模型读不了图片**：截图/图片内容要用
+    `mcode-tools upload_temp_url <path>` → `mcode-tools connector call connector__matrix__describe_images --args-file <f>`，
+    提示词里让它「逐字转录，英文/中文分段标记」，不要让它总结。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）
