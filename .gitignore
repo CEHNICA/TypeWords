@@ -50,3 +50,6 @@ public/dicts/**
 # 本地体检器产物
 _tools/__pycache__/
 _tools/_shots/
+
+# 本地导入文章的服务端副本（用户自己的数据，不进版本库）
+/data/
