@@ -29,6 +29,8 @@ export interface PlacementLadder {
   name: string
   /** 一句话说明 */
   desc: string
+  /** 这条阶梯摸到顶之后往哪走（小学阶梯要指路去初中，初中阶梯才谈高中） */
+  afterTop: string
   /** 从易到难的阶梯 */
   steps: PlacementStep[]
 }
@@ -39,8 +41,9 @@ export type DictResourceMap = Map<number, { name: string, url: string, length: n
 export const PLACEMENT_LADDERS: PlacementLadder[] = [
   {
     key: 'lw',
-    name: '莱芜小学五四（山东版）',
-    desc: '山东莱芜五四制小学英语（常被叫「鲁教版」）。小学三上到五下，六年级起接初中五四。',
+    name: '莱芜五四制（山东版）',
+    desc: '山东莱芜五四制英语（常被叫「鲁教版」）。小学三上到五下，六年级起接初中五四，一路排到九年级。',
+    afterTop: '这一套是初中五四制，初中都过了，可以上高中词汇表了。',
     steps: [
       { label: '三年级上', ids: [253] },
       { label: '三年级下', ids: [254] },
@@ -50,12 +53,18 @@ export const PLACEMENT_LADDERS: PlacementLadder[] = [
       { label: '五年级下', ids: [258] },
       { label: '六年级上', ids: [259] },
       { label: '六年级下', ids: [260] },
+      { label: '七年级上', ids: [261] },
+      { label: '七年级下', ids: [262] },
+      { label: '八年级上', ids: [263] },
+      { label: '八年级下', ids: [264] },
+      { label: '九年级', ids: [265] },
     ],
   },
   {
     key: 'pep',
     name: '人教版 PEP',
-    desc: '小学三年级起，衔初中。最通用的版本。',
+    desc: '小学三年级起，衔初中，一路到九年级。最通用的版本。',
+    afterTop: '初中都过了，可以上高中词汇表了。',
     steps: [
       { label: '三年级上', ids: [141] },
       { label: '三年级下', ids: [142] },
@@ -67,12 +76,16 @@ export const PLACEMENT_LADDERS: PlacementLadder[] = [
       { label: '六年级下', ids: [148] },
       { label: '初中七年级上', ids: [161] },
       { label: '初中七年级下', ids: [162] },
+      { label: '初中八年级上', ids: [163] },
+      { label: '初中八年级下', ids: [164] },
+      { label: '初中九年级', ids: [165] },
     ],
   },
   {
     key: 'pep_new',
     name: '人教版新起点（小学）',
-    desc: '一二年级就有词，适合从零起步摸底。',
+    desc: '一二年级就有词，适合从零起步摸底。新起点初中另见「人教版 PEP」。',
+    afterTop: '人教新起点只有小学。转去「人教版 PEP」接着测初中，或者直接上高中词汇表。',
     steps: [
       { label: '一年级上', ids: [149] },
       { label: '一年级下', ids: [150] },
@@ -91,7 +104,8 @@ export const PLACEMENT_LADDERS: PlacementLadder[] = [
   {
     key: 'wy',
     name: '外研版（小学）',
-    desc: '外研社新版教材。',
+    desc: '外研社新版教材（小学部分）。初中另见「外研社（初中）」。',
+    afterTop: '外研版这套是小学。转去「外研社（初中）」接着测初中。',
     steps: [
       { label: '一年级上', ids: [187] },
       { label: '一年级下', ids: [188] },
@@ -108,9 +122,24 @@ export const PLACEMENT_LADDERS: PlacementLadder[] = [
     ],
   },
   {
+    key: 'wy_junior',
+    name: '外研社（初中）',
+    desc: '外研社初中教材，七年级上到九年级下。',
+    afterTop: '外研初中都过了，可以上高中词汇表了。',
+    steps: [
+      { label: '七年级上', ids: [177] },
+      { label: '七年级下', ids: [180] },
+      { label: '八年级上', ids: [181] },
+      { label: '八年级下', ids: [182] },
+      { label: '九年级上', ids: [183] },
+      { label: '九年级下', ids: [184] },
+    ],
+  },
+  {
     key: 'jie',
     name: '冀教版',
-    desc: '河北等地区用的冀教版本。',
+    desc: '河北等地区用的冀教版本，小学三年级起，一路到九年级。',
+    afterTop: '初中都过了，可以上高中词汇表了。',
     steps: [
       { label: '三年级上', ids: [222] },
       { label: '三年级下', ids: [223] },
@@ -122,12 +151,16 @@ export const PLACEMENT_LADDERS: PlacementLadder[] = [
       { label: '六年级下', ids: [229] },
       { label: '初中七年级上', ids: [230] },
       { label: '初中七年级下', ids: [231] },
+      { label: '初中八年级上', ids: [232] },
+      { label: '初中八年级下', ids: [233] },
+      { label: '初中九年级', ids: [234] },
     ],
   },
   {
     key: 'joinin',
     name: '剑桥小学英语 JOIN IN',
     desc: '综合词表（不分年级），出报告时只给词汇量估计。',
+    afterTop: '这套词表不分年级，按掌握比例估的词汇量。可以直接进 CET-4 或高考 3500 词库练。',
     steps: [
       { label: '剑桥小学综合', ids: [237] },
     ],
@@ -136,6 +169,7 @@ export const PLACEMENT_LADDERS: PlacementLadder[] = [
     key: 'ket',
     name: '剑桥少儿英语 KET',
     desc: 'KET 词汇表（约等于小学毕业水平），只给词汇量估计。',
+    afterTop: 'KET 是小学毕业水平。转去「人教版 PEP」接着测初中，或者直接上高中词汇表。',
     steps: [
       { label: 'KET 综合', ids: [111] },
     ],

@@ -1,0 +1,17 @@
+const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const path = require('path')
+;(async () => {
+  const b = await chromium.launch({ headless: true })
+  const ctx = await b.newContext({viewport:{width:1280,height:900}})
+  const p = await ctx.newPage()
+  await p.goto('http://localhost:5567/placement-test', {waitUntil:'domcontentloaded'})
+  await p.waitForTimeout(1500)
+  await p.screenshot({path: path.join(__dirname, '..', '_shots', 'placement_setup.png'), fullPage: true})
+  // 窄屏
+  const p2 = await (await b.newContext({viewport:{width:420,height:900}})).newPage()
+  await p2.goto('http://localhost:5567/placement-test', {waitUntil:'domcontentloaded'})
+  await p2.waitForTimeout(1500)
+  await p2.screenshot({path: path.join(__dirname, '..', '_shots', 'placement_setup_narrow.png'), fullPage: true})
+  await b.close()
+  console.log('ok')
+})()

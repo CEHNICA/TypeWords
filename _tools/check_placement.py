@@ -412,6 +412,144 @@ def check_wrong_option_display():
     )
 
 
+# ---------------------------------------------------------------- 2f. 阶梯必须铺到 9 年级
+def check_ladder_reaches_grade9():
+    """用户原话：「还有一直到9年纪的英文课本都要导入进去」
+
+    词库本地早就有八/九年级（PEPChuZhong8_1/8_2/9_1、jiJiao8-1/8-2/9、
+    LWCZ-7~9、WaiYanSheChuZhong 4~6），但阶梯没挂上去 → 摸底测不到初三。
+    """
+    page = read(PAGE_VUE) if os.path.exists(PAGE_VUE) else ""
+    data = read(PLACEMENT_DATA) if os.path.exists(PLACEMENT_DATA) else ""
+    if not data:
+        check("阶梯数据文件存在", False, "读不到 placement.ts")
+        return
+
+    # id → 词库名（从清单里取）
+    names = {}
+    if os.path.exists(WORD_LIST):
+        with open(WORD_LIST, "r", encoding="utf-8") as f:
+            for it in json.load(f):
+                names[int(it["id"])] = it.get("url", "")
+
+    blocks = split_ladder_blocks(data)
+    ladders = {}
+    for block in blocks:
+        km = re.search(r"key:\s*'([^']+)'", block)
+        nm = re.search(r"name:\s*'([^']+)'", block)
+        dm = re.search(r"desc:\s*'([^']*)'", block)
+        am = re.search(r"afterTop:\s*'([^']*)'", block)
+        if not km:
+            continue
+        ladders[km.group(1)] = {
+            "name": nm.group(1) if nm else km.group(1),
+            "desc": dm.group(1) if dm else "",
+            "afterTop": am.group(1) if am else "",
+            "ids": [int(x) for g in re.findall(r"ids:\s*\[([^\]]*)\]", block)
+                    for x in re.findall(r"\d+", g)],
+            "labels": re.findall(r"label:\s*'([^']+)'", block),
+        }
+
+    # ① 分年级教材阶梯必须铺到九年级
+    # 豁免：人教新起点、外研版（小学）这两套**只有小学教材**，本来就没有初中册
+    #      （它们各自的初中在「人教版 PEP」/「外研社（初中）」两套阶梯里）
+    PRIMARY_ONLY = ("joinin", "ket", "pep_new", "wy")
+    grade_ladders = {k: v for k, v in ladders.items()
+                     if len(v["labels"]) > 1 and k not in PRIMARY_ONLY}
+    for key, info in grade_ladders.items():
+        last = info["labels"][-1]
+        check(
+            "「%s」阶梯铺到九年级（最后一级是九年级）" % info["name"],
+            "九年级" in last or "九上" in last or "九年級" in last,
+            "最后一级是「%s」，测不到初三" % last,
+        )
+
+    # ② 具体册数必须都挂上
+    expected = {
+        "lw": ["LWCZ-7-1", "LWCZ-7-2", "LWCZ-8-1", "LWCZ-8-2", "LWCZ-9-1"],
+        "pep": ["PEPChuZhong8_1_T", "PEPChuZhong8_2_T", "PEPChuZhong9_1_T"],
+        "jie": ["jiJiao8-1", "jiJiao8-2", "jiJiao9"],
+    }
+    for key, urls in expected.items():
+        info = ladders.get(key)
+        if not info:
+            check("「%s」阶梯存在" % key, False, "阶梯没了")
+            continue
+        have = [names.get(i, "") for i in info["ids"]]
+        missing = [u for u in urls if not any(u in h for h in have)]
+        check(
+            "「%s」阶梯挂了 %s" % (info["name"], "、".join(urls)),
+            not missing,
+            "没挂上：" + "、".join(missing),
+        )
+
+    # ③ 外研社初中（外研七上~九下）要能单独测
+    wy_junior = [v for k, v in ladders.items() if "外研" in v["name"] and "初中" in v["name"]]
+    check(
+        "有「外研社（初中）」阶梯（七上~九下）",
+        bool(wy_junior),
+        "外研初中词表在库里（外研七上~九下）却没有阶梯可用",
+    )
+    if wy_junior:
+        have = [names.get(i, "") for i in wy_junior[0]["ids"]]
+        need = ["WaiYanSheChuZhong_1_T", "WaiYanSheChuZhong_6_T"]
+        missing = [n for n in need if not any(n in h for h in have)]
+        check(
+            "「外研社（初中）」覆盖七年级上到九年级下",
+            not missing,
+            "没挂上：" + "、".join(missing),
+        )
+
+    # ④ 阶梯名不能再骗人：莱芜那套现在含初中册，名字得说清楚
+    lw = ladders.get("lw")
+    if lw:
+        check(
+            "莱芜阶梯名字说清楚含初中（原来叫「小学五四」，现在含六~九年级初中册）",
+            "初中" in lw["name"] or "五四制" in lw["name"],
+            "阶梯名还叫「小学」，但实际含初中册，会误导",
+        )
+
+    # ⑤ 只有小学教材的两套要在说明里指路去哪测初中
+    for key, hint in (("pep_new", "人教版 PEP"), ("wy", "外研社（初中）")):
+        info = ladders.get(key)
+        if not info:
+            continue
+        check(
+            "「%s」说明里指路去初中那套（它本身只有小学册）" % info["name"],
+            hint in info.get("desc", "") or hint in info["name"],
+            "小学阶梯的说明没提初中，用户以为测不到初中",
+        )
+
+    # ⑥ 摸到顶之后往哪走：小学阶梯不能瞎说「可以上高中词汇表了」，
+    #    得指路去初中那套；初中阶梯才谈高中。
+    for key, info in ladders.items():
+        check(
+            "「%s」写了 afterTop（摸到顶之后往哪走）" % info["name"],
+            bool(info.get("afterTop", "").strip()),
+            "afterTop 是空的，报告里会给出含糊的结语",
+        )
+
+    for key, hint in (("pep_new", "人教版 PEP"), ("wy", "外研社（初中）"), ("ket", "人教版 PEP")):
+        info = ladders.get(key)
+        if not info:
+            continue
+        check(
+            "「%s」摸到顶后指路去初中那套（小学阶梯不能直接喊高中）" % info["name"],
+            hint in info.get("afterTop", ""),
+            "afterTop 里没有「%s」：小学阶梯摸到顶却说「可以上高中词汇表了」是误导" % hint,
+        )
+
+    for key in ("pep", "lw", "jie", "wy_junior"):
+        info = ladders.get(key)
+        if not info:
+            continue
+        check(
+            "「%s」摸到顶后说的是上高中（这套含初中册）" % info["name"],
+            "高中" in info.get("afterTop", ""),
+            "含初中册的阶梯摸到顶，应该说可以上高中词汇表",
+        )
+
+
 # ---------------------------------------------------------------- 3. 入口
 def check_entry():
     if not os.path.exists(WORDS_VUE):
@@ -452,6 +590,7 @@ def main():
     check_broken_word_guard()
     check_sweep_estimate()
     check_wrong_option_display()
+    check_ladder_reaches_grade9()
     check_entry()
     if "--http" in sys.argv:
         check_http()

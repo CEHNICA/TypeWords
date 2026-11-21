@@ -308,7 +308,7 @@ function report() {
     advice: single
       ? '这套词表不分年级，按掌握比例估的词汇量。可以直接进 CET-4 或高考 3500 词库练。'
       : maxLevel >= levels.length - 1
-        ? `可以开始学初中词汇了（下一站：${ladder().name} 初中词表）。`
+        ? `《${ladder().name}》已经摸到顶了（${levels[maxLevel]?.label}）。${ladder().afterTop}`
         : `建议从《${ladder().name} ${levels[maxLevel]?.label}》接着学。`,
   }
 }
@@ -345,7 +345,7 @@ function sweepReport() {
   const advice = weak
     ? `${weak.label} 开始吃力（掌握率 ${weak.rate}%）。先把这一册啃下来，再往上走。`
     : total
-      ? `这一套《${ladder().name}》全年级都掌握得不错，可以直接进初中词表。`
+      ? `这一套《${ladder().name}》全年级都掌握得不错。${ladder().afterTop}`
       : '一题都没做，重新测一次吧。'
   return { rows, tested, weak, estimate, total, right, top, advice }
 }

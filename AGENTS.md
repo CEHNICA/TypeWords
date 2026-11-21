@@ -54,13 +54,17 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `app/components/word/ShufflePracticeSettingDialog.vue` | 0 进度时随机范围退回整本词典 |
 | `app/pages/(words)/words-test/[id].vue` | 测试页大改：单轮 20 题上限、成绩小结卡、顺序/随机分流、未作答计错 |
 | `nuxt.config.ts` | `devtools.enabled = false`（浮动按钮盖住落地页主按钮） |
-| `app/core/data/placement.ts` | 新增：7 套教材阶梯（**莱芜小学五四（山东版）** / PEP / 新起点 / 外研 / 冀教 / JOIN IN / KET），难度轴 = 年级。莱芜放第一位 = 默认教材 |
+| `app/core/data/placement.ts` | 新增：**8 套教材阶梯**（**莱芜五四制（山东版）** / PEP / 新起点 / 外研小学 / **外研社（初中）** / 冀教 / JOIN IN / KET），难度轴 = 年级。莱芜放第一位 = 默认教材。后扩：**一路铺到九年级**（PEP/冀教/莱芜加初中 7~9 年级册、外研初中独立成阶梯）+ `afterTop` 字段（摸到顶后往哪走） |
 | `app/pages/(words)/placement-test.vue` | 新增：`/placement-test` 水平摸底测试页（**自适应定位 + 逐级诊断两种测法**、年表报告、导 CSV、错词进错词本）；后补 **答错信息完整性**（提示区「你选的是：英文（中文）」+ 选项提交后显示带底色块的英文单词 + 报告明细红色「误选：英文（中文）」+ CSV 加误选两列） |
 | `app/pages/(words)/words.vue` | 「统计」与「我的词典」卡片之间插入「水平摸底测试」卡片 |
 | `app/core/utils/word-test.ts` | 加固：`relsOf()` + `trans` 兜底，小学词库残缺词条不再把整道题吞掉 |
-| `_tools/check_placement.py` | 新增：摸底链路体检器 32 项；后扩到 **45 项**（新增「答错信息完整性」维度：提示区 / 选项英文 / 明细误选 / CSV 误选列 / 红绿语义 / 撇号收紧 / 列宽不截断） |
+| `_tools/check_placement.py` | 新增：摸底链路体检器 32 项；后扩到 **45 项**（新增「答错信息完整性」维度：提示区 / 选项英文 / 明细误选 / CSV 误选列 / 红绿语义 / 撇号收紧 / 列宽不截断）；再扩到 **72 项**（新增「阶梯铺到九年级」维度：分年级阶梯末级必须是九年级 / PEP·冀教·莱芜必须挂对初中册 / 外研初中独立成阶梯 / 莱芜名字说清含初中 / `afterTop` 指路正确） |
 | `_tools/_check_placement_ui.js` | 新增：摸底**浏览器实测** 14 项（答错提示 / 选项英文 / 明细误选 / CSV 下载内容 / 撇号无断词 / 无 JS 报错，音频噪音报错豁免） |
 | `_tools/_shot_placement.js` | 新增：摸底「答错后」+「报告页」截图（给视觉模型验收） |
+| `_tools/_check_placement_ladders.js` | 新增：**8 套阶梯浏览器实测**（逐套加载出题 + **抓网络请求证明新增九年级册子真被下载** + 加载耗时） |
+| `_tools/_check_placement_advice.js` | 新增：报告页文案实测（8 套按钮齐全 / 「共 N 个年级」对得上 / 没摸到顶时不瞎喊「摸到顶了」） |
+| `_tools/_shot_setup.js` | 新增：setup 页桌面 + 窄屏截图（给视觉模型验收 8 个教材按钮排布） |
+| `_tools/_diag_textbooks.mjs` | 新增：词库课本盘点诊断（本地 207 册 vs 线上 241 册，差的是雅思词汇/听力，**本地没有孤儿也没有 404**） |
 | `app/pages/(words)/book-review.vue` | 新增：`/book-review` 整本复习页（**册子多选 + 全词逐个过 + 中断续做 + 每册掌握率报告 + 生词进错词本**）；后补 **选项↔单词对照表**（答错也给出四个选项的英文，默认展开、可点发音）+ **报告页「接着来」区**（接着刷下一册 / 只重刷生词） |
 | `app/core/utils/placement-progress.ts` | 新增：整本复习进度持久化（**localStorage**，按「教材+册子组合」分桶 + `tw-book-review:last` 指针） |
 | `_tools/check_book_review.py` | 新增：整本复习链路体检器 38 项 |
@@ -98,7 +102,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 ```powershell
 cd C:\Users\17321\Documents\破甲\typewords-src
 python _tools\check_test_flow.py --http     # 17 项，全绿 exit 0
-python _tools\check_placement.py --http    # 45 项，全绿 exit 0
+python _tools\check_placement.py --http    # 72 项，全绿 exit 0
 python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
 python _tools\check_article_import.py --http # 81 项，全绿 exit 0
 python _tools\check_word_lookup.py --http     # 89 项（查词），全绿 exit 0
@@ -107,7 +111,10 @@ python _tools\check_word_lookup.py --http     # 89 项（查词），全绿 exit
 `node _tools\_check_lookup_ui.js` 走 Playwright 实测点词（查词链路每次改动必跑），
 `node _tools\_check_cross_browser.js` 跑跨浏览器闭环。
 `node _tools\_check_placement_ui.js` 跑摸底答题实测（摸底页每次改动必跑），
-`node _tools\_shot_placement.js` 出「答错后 / 报告页」两张截图给视觉模型验收。
+`node _tools\_check_placement_ladders.js` 跑 8 套阶梯加载实测（改了阶梯/词库就必跑），
+`node _tools\_check_placement_advice.js` 跑报告页文案实测，
+`node _tools\_shot_placement.js` 出「答错后 / 报告页」两张截图给视觉模型验收，
+`node _tools\_shot_setup.js` 出 setup 页桌面 + 窄屏截图给视觉模型验收。
 
 词典扩充（改了词库/查词就重跑）：
 
@@ -205,6 +212,19 @@ node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
       只写 `[a-zA-Z'-]+` 会误判成「没显示英文」。
     - 词库 JSON 顶层是**数组**（不是 `{words:[...]}`），探查脚本别按后者写。
     - 浏览器实测脚本选择器别依赖 UnoCSS 类名（`gap-1`→`gap-2` 就废了）→ 明细行加 `data-placement-row`。
+28. **阶梯铺到九年级后的坑（2026-11-21）**：
+    - **本地词库一直就有八/九年级课本词表**（`PEPChuZhong8_1/8_2/9_1`、`jiJiao8-1/8-2/9`、
+      `LWCZ-7~9`、`WaiYanSheChuZhong_4~6`），只是阶梯没挂上去 → 摸底测不到初三。
+      用户说「要导入九年级课本」时先查 `public/list/word.json`，**别急着去下载数据源**。
+    - **外研初中必须独立成一套阶梯**：外研初中词库 id 177~184 **小于**外研小学 id 187~206，
+      塞进小学阶梯会破坏「每级最大 id 递增」的难度递进。
+    - **`afterTop` 字段是必须的**：小学阶梯（人教新起点 / 外研小学 / KET）摸到顶**不能**喊
+      「可以上高中词汇表了」，得指路去初中那套；只有含初中册的阶梯才谈高中。
+    - **阶梯 id 是「每级最大 id 递增」**：体检器靠这条断言难度递进，改阶梯顺序会红。
+    - **本地 207 册 vs 线上 241 册**：差的那 34 册全是雅思词汇/听力，**没有任何课本**；
+      线上 `list/article.json` 只有 NCE_1~4，**没有 1~9 年级课本课文数据源**（要课文就没辙）。
+    - 尺子假阳性坑：**逐级诊断**模式的报告文案是「断层在这一级」，**自适应定位**模式才是
+      「定位到这一级」。测文案前先切对模式，否则尺子自己给自己判红。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）
