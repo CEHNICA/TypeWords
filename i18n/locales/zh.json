@@ -812,5 +812,6 @@
 	"spell": "拼写",
 	"listen": "听写",
 	"dictation": "默写",
-	"identify": "自测"
+	"identify": "自测",
+	"import_article": "导入文章"
 }

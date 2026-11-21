@@ -271,17 +271,22 @@ export function useGetDict() {
       let dictId = route.params.id
       //先在自己的词典列表里面找，如果没有再在资源列表里面找
       dict = store.article.bookList.find(v => isDictIdMatch(v, dictId))
-      let r = await fetch(resourceWrap(DICT_LIST.ARTICLE.ALL))
-      let dict_list = await r.json()
-      if (!dict) dict = dict_list.flat().find(v => isDictIdMatch(v, dictId)) as Dict
+      // 书架里没有再走远程资源列表
+      if (!dict) {
+        let r = await fetch(resourceWrap(DICT_LIST.ARTICLE.ALL))
+        let dict_list = await r.json()
+        dict = dict_list.flat().find(v => isDictIdMatch(v, dictId)) as Dict
+      }
     }
     if (dict && dict.id) {
       if (!dict?.articles?.length && !dict?.custom && !dict?.system && !dict?.is_default) {
         fetching = true
         let r = await _getDictDataByUrl(dict, DictType.article)
         runtimeStore.editDict = r
-      }
-      if (store.article.bookList.find(book => book.id === runtimeStore.editDict.id)) {
+      } else {
+        // 本地导入的书自带 articles，走不到上面的 fetch 分支，
+        // 这里必须补赋值，否则详情页拿到的是空书（上游断点 3）
+        runtimeStore.editDict = dict
       }
     } else {
       router.push('/articles')

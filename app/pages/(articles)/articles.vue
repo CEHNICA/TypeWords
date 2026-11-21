@@ -16,6 +16,7 @@ import { watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { DictType } from '@/core/types/enum.ts'
 import { usePracticeArticlePersistence } from '@/core/composables/usePracticePersistence.ts'
+import ImportArticle from '@/components/article/ImportArticle.vue'
 
 dayjs.extend(isoWeek)
 dayjs.extend(isBetween)
@@ -37,6 +38,9 @@ const router = useRouter()
 const runtimeStore = useRuntimeStore()
 let isSaveData = $ref(false)
 const articlePersistence = usePracticeArticlePersistence()
+// 本地导入文章（上游「创建个人书籍」是死链：/book/new 会被 useGetDict 踢回列表，
+// 而且上游根本没有「新增文章」的 UI，建出来的书永远是空的）
+let showImport = $ref(false)
 
 watch(
   [() => store.load, () => runtimeStore.globalLoading],
@@ -302,8 +306,8 @@ const { data: recommendBookList, isFetching } = useFetch(resourceWrap(DICT_LIST.
           >
             {{ isMultiple ? $t('cancel') : $t('manage_books') }}
           </div>
-          <div class="color-link cursor-pointer" @click="nav('/book/new', { isAdd: true })">
-            {{ $t('create_personal_book') }}
+          <div class="color-link cursor-pointer" @click="showImport = true">
+            {{ $t('import_article') }}
           </div>
         </div>
       </div>
@@ -342,6 +346,8 @@ const { data: recommendBookList, isFetching } = useFetch(resourceWrap(DICT_LIST.
       </div>
     </div>
   </BasePage>
+
+  <ImportArticle v-model="showImport" />
 </template>
 
 <style scoped lang="scss">

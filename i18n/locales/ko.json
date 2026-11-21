@@ -812,5 +812,6 @@
 	"spell": "철자",
 	"listen": "받아쓰기",
 	"dictation": "암기 쓰기",
-	"identify": "자가 진단"
+	"identify": "자가 진단",
+	"import_article": "Import Article"
 }

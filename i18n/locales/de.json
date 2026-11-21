@@ -812,5 +812,6 @@
 	"spell": "Buchstabieren",
 	"listen": "Diktat",
 	"dictation": "Auswendischreiben",
-	"identify": "Selbsttest"
+	"identify": "Selbsttest",
+	"import_article": "Import Article"
 }

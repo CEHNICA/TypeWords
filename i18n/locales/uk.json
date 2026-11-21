@@ -812,5 +812,6 @@
 	"spell": "Правопис",
 	"listen": "Диктант",
 	"dictation": "Письмо напам'ять",
-	"identify": "Самоперевірка"
+	"identify": "Самоперевірка",
+	"import_article": "Import Article"
 }

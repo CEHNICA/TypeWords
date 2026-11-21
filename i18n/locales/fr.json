@@ -812,5 +812,6 @@
 	"spell": "Orthographe",
 	"listen": "Dictée",
 	"dictation": "Écriture de mémoire",
-	"identify": "Auto-évaluation"
+	"identify": "Auto-évaluation",
+	"import_article": "Import Article"
 }

@@ -812,5 +812,6 @@
 	"spell": "Đánh vần",
 	"listen": "Nghe - viết",
 	"dictation": "Viết từ trí nhớ",
-	"identify": "Tự kiểm tra"
+	"identify": "Tự kiểm tra",
+	"import_article": "Import Article"
 }

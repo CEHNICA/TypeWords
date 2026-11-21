@@ -57,6 +57,12 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `app/pages/(words)/book-review.vue` | 新增：`/book-review` 整本复习页（**册子多选 + 全词逐个过 + 中断续做 + 每册掌握率报告 + 生词进错词本**）；后补 **选项↔单词对照表**（答错也给出四个选项的英文，默认展开、可点发音）+ **报告页「接着来」区**（接着刷下一册 / 只重刷生词） |
 | `app/core/utils/placement-progress.ts` | 新增：整本复习进度持久化（**localStorage**，按「教材+册子组合」分桶 + `tw-book-review:last` 指针） |
 | `_tools/check_book_review.py` | 新增：整本复习链路体检器 38 项 |
+| `app/components/article/ImportArticle.vue` | 新增：本地导入文章弹窗（书籍名/标题/标题翻译 + 原文/译文 Textarea + 选文件 + 导入） |
+| `app/pages/(articles)/articles.vue` | 死链「创建个人书籍」换成「导入文章」入口；导入成功切当前书 |
+| `app/core/hooks/dict.ts` | 修断点：`loadDict()` 原来只在远程 fetch 分支赋 `runtimeStore.editDict`，本地导入的书自带 articles → 详情页显示空书。补 else 分支 |
+| `i18n/locales/*.json` | 14 个语言包各加 `import_article`（zh=导入文章 / tw=匯入文章 / 其余=Import Article） |
+| `_tools/check_article_import.py` | 新增：文章导入链路体检器 39 项 |
+| `_tools/samples/my_article_en.txt` / `_tools/samples/my_article_zh.txt` | 导入功能的测试样本（9 行英文 / 9 行中文，一一对应） |
 
 ## 体检器（改测试链路必跑）
 
@@ -65,6 +71,7 @@ cd C:\Users\17321\Documents\破甲\typewords-src
 python _tools\check_test_flow.py --http     # 17 项，全绿 exit 0
 python _tools\check_placement.py --http    # 32 项，全绿 exit 0
 python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
+python _tools\check_article_import.py --http # 39 项，全绿 exit 0
 ```
 
 ## 硬规矩（补）
@@ -76,6 +83,12 @@ python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
    （`lw:0,1` → `lw:0,1,2`）→ 直接 `start(false)` 读空桶 → 已测的词全被逼着重测。
 10. **重刷生词（`mode === 'wrong'`）时 `persist()` 直接 return**，不写全量桶：
     重刷结果记在独立 `retryResults`，写全量桶会把生词在全套里的 0 分冲掉、误判「已掌握」。
+11. **断句一律复用上游 `splitEnArticle2` / `splitCNArticle2` / `genArticleSectionData`**：
+    上游已处理缩写（Mr./U.S.）、数字千分位、智能引号、中文 Intl.Segmenter 断句，手搓必错。
+12. **文章正文结构 = 一句一段**：`text` / `textTranslate` 用 `\n\n` 分段，段落一一对应。
+    上游 NCE 数据就是这结构；写成 `\n` 分句 → 跟打页译文跟英文错位。
+13. **i18n 语言包是 Tab 缩进**：`json.dumps(indent=2)` 重写会造成上千行 diff。
+    加 key 要用**文本插入**（`head + ',\n\t"key": "value"\n' + tail`）再 `json.load()` 校验。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）

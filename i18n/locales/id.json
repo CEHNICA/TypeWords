@@ -812,5 +812,6 @@
 	"spell": "Ejaan",
 	"listen": "Dikte",
 	"dictation": "Menulis dari ingatan",
-	"identify": "Tes mandiri"
+	"identify": "Tes mandiri",
+	"import_article": "Import Article"
 }

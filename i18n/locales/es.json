@@ -812,5 +812,6 @@
 	"spell": "Deletreo",
 	"listen": "Dictado",
 	"dictation": "Escritura de memoria",
-	"identify": "Autoevaluación"
+	"identify": "Autoevaluación",
+	"import_article": "Import Article"
 }

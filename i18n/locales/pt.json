@@ -812,5 +812,6 @@
 	"spell": "Soletrar",
 	"listen": "Ditado",
 	"dictation": "Escrita de memória",
-	"identify": "Autoavaliação"
+	"identify": "Autoavaliação",
+	"import_article": "Import Article"
 }

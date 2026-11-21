@@ -812,5 +812,6 @@
 	"spell": "スペル",
 	"listen": "書き取り",
 	"dictation": "暗記書き",
-	"identify": "自己テスト"
+	"identify": "自己テスト",
+	"import_article": "Import Article"
 }

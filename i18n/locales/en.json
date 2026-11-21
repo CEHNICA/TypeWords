@@ -812,5 +812,6 @@
 	"spell": "Spelling",
 	"listen": "Dictation",
 	"dictation": "Recall",
-	"identify": "Self-test"
+	"identify": "Self-test",
+	"import_article": "Import Article"
 }

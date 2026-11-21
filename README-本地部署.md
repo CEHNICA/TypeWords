@@ -238,6 +238,62 @@ cd C:\Users\17321\Documents\破甲\typewords-src
 python _tools\check_book_review.py --http     # 38 项
 ```
 
+## 文章功能怎么用（上游自带，本地已实测）
+
+| 页面 | 干什么 |
+|---|---|
+| `/articles` | 文章首页：当前书 + 进度条 + 「开始学习」；下面「我的书籍」是书架 |
+| `/book-list` | 书架管理 / 全部内置文章书 |
+| `/book/:id` | 书籍详情：左边文章列表，右边正文预览，「学习」进跟打 |
+| `/practice-articles/:id` | **跟打页**：逐句显示、译文对照、Question 区、音频、计时/统计/进度 |
+
+数据都在本地：`public/list/article.json`（索引）+ `public/dicts/en/article/NCE_1~4.json`
+（正文，共 272 篇：NCE1=72 / NCE2=96 / NCE3=60 / NCE4=47）。
+
+**编辑器**：跟打页里按 **Ctrl+E** 打开文章编辑器 —— 原文/译文、分句、应用、逐句编辑、
+音频打点、LRC 上传。保存时把 JSON 复制到剪贴板（上游就是这么设计的，没有"存到本地"按钮）。
+
+已知上游缺口（不是本地改坏的）：
+- `public/sound/article/` 只有 `nce1` → nce2/3/4 的 203 篇 `audioSrc` 会 404（跟打不受影响）。
+- 「网络翻译」按钮被 `v-if="false"` 隐藏，本地离线用不了。
+- `NCE_3` 有 1 篇缺 `question`。
+
+## 本地导入文章（本地新增，2026-11-21）
+
+上游 master **没有「新增文章」的 UI**（全仓库搜不到 `addArticle` / `articles.push`），
+原文里那个「创建个人书籍」按钮是**死链**：`/book/new` 会被 `useGetDict` 直接踢回 `/articles`；
+就算硬建出书，也是空书（练习页报「没有文章可学习！」）。
+本地把这个死链换成了真正能干活的 **「导入文章」**。
+
+**入口**：`/articles` 页 →「我的书籍」右上角 →「导入文章」。
+
+**用法**：填书籍名、文章标题、标题翻译 → 贴原文（英文）和译文（中文，可留空）→
+「选择文件」可以从 `.txt/.md` 直接读进来 →「导入」。
+
+导入后立刻进「我的书籍」，首页当前书切成它，点「开始学习」直接跟打。
+
+**翻译对齐规则**（实测踩过坑）：
+- 译文**一句一行**，行数 = 英文句子数 → 按行一一对应（最稳）；
+- 行数对不上 → 退回上游中文断句器 `splitCNArticle2`，截断/补空到英文句数；
+- 输出统一成上游的**「一句一段」**（`text` / `textTranslate` 用 `\n\n` 分段，段落一一对应），
+  否则跟打页的译文会跟英文错位。
+
+**断句一律复用上游函数**：`splitEnArticle2` / `splitCNArticle2` / `genArticleSectionData`。
+上游已处理缩写（Mr./U.S.）、数字千分位、智能引号、中文 Intl.Segmenter 断句 —— 手搓必错。
+
+**落盘**：走 `dataSync.saveDictState()`，存在浏览器 IndexedDB，刷新后内容还在。
+`sections` 不落盘是**上游正常设计**（运行时按 text/textTranslate 重新生成），不是 bug。
+
+**顺带修的上游断点**：`app/core/hooks/dict.ts` 的 `loadDict()` 原来只在「远程 fetch」分支赋
+`runtimeStore.editDict`，本地导入的书自带 articles（不 fetch）→ 详情页显示空书。现在补了 else 分支。
+
+体检器（改这块后必跑）：
+
+```powershell
+cd C:\Users\17321\Documents\破甲\typewords-src
+python _tools\check_article_import.py --http     # 39 项
+```
+
 ## 英语音标页（本地新增，2026-11-20）
 
 镜像版/线上站有的 `/phonetics` 音标教学页，master 分支上游没有，已移植成源码版原生页面：

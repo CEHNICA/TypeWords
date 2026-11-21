@@ -812,5 +812,6 @@
 	"spell": "สะกดคำ",
 	"listen": "คัดคำ",
 	"dictation": "เขียนจากความจำ",
-	"identify": "ทดสอบตนเอง"
+	"identify": "ทดสอบตนเอง",
+	"import_article": "Import Article"
 }
