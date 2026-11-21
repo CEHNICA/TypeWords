@@ -1,0 +1,26 @@
+[
+  {
+    "notice": "只有 title 和 text 字段是必填，其他字段可删除不填。填写时，请从第三条数据开始填写，第二条数据是示例，填写完成之后，不要删除前面两条",
+    "notice1": "只有 title 和 text 字段是必填，其他字段可删除不填。填写时，请从第三条数据开始填写，第二条数据是示例，填写完成之后，不要删除前面两条",
+    "notice2": "只有 title 和 text 字段是必填，其他字段可删除不填。填写时，请从第三条数据开始填写，第二条数据是示例，填写完成之后，不要删除前面两条",
+    "title": "这里填标题，必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填",
+    "titleTranslate": "这里填标题翻译",
+    "text": "这里填原文，一句一个换行符，一段两个换行符，必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填必填",
+    "textTranslate": "这里填原文翻译，一句一个换行符，一段两个换行符",
+    "audioSrc": "这里填音频的url/在线地址"
+  },
+  {
+    "title": "How are you today?",
+    "titleTranslate": "今天好吗？",
+    "text": "STEVEN:Hello, HELEN.\n\nHELEN:Hi, Steven.\n\nSTEVEN:How are you today?\n\nHELEN:I'm very well, thank you. And you?\n\nSTEVEN:I'm fine, thanks.\n\nSTEVEN:How is Tony?\n\nHELEN:He's fine, thanks. How's Emma?\n\nSTEVEN:She's very well, too, Helen.\n\nSTEVEN:Goodbye, Helen.Nice to see you.\n\nHELEN:Nice to see you, too, Steven. Goodbye.",
+    "textTranslate": "史蒂文：你好，海伦 \n\n海 伦：你好，史蒂文 \n\n史蒂文：你今天好吗？ \n\n海 伦：很好，谢谢你。你好吗？ \n\n史蒂文：很好，谢谢。 \n\n史蒂文：托尼好吗？ \n\n海 伦：他很好，谢谢。埃玛好吗？ \n\n史蒂文：她也很好，海伦。 \n\n史蒂文：再见，海伦。见到你真高兴。 \n\n海 伦：我见到你也很高兴，史蒂文。再见。",
+    "audioSrc": "\/sound\/article\/nce1\/009&010－How Are You Today.mp3"
+  },
+  {
+    "title": "",
+    "titleTranslate": "",
+    "text": "",
+    "textTranslate": "",
+    "audioSrc": ""
+  }
+]
