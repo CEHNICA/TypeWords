@@ -29,7 +29,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 
 ## 资源在哪
 
-- 词库：`public/dicts/en/word/*.json`（207）+ `article`（4），从镜像版灌的，别重新下载。
+- 词库：`public/dicts/en/word/*.json`（207）+ `article`（**17** = NCE 4 + **莱芜课本 13**），从镜像版/课本 PDF 灌的，别重新下载。
 - 词库索引：`public/list/*.json`（word 207 / article 4 / recommend_* ）—— 上游 master 只带 1 条，
   已修好。**改词库清单要同步 `public/list/*.json`。**
 - 音标资源：`public/sound/phonetics/*.mp3`（48）、`public/video/phonetics/*.mp4`（48）。
@@ -96,6 +96,78 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `app/core/types/types.ts` | 改：`Word` 加 `baseWord?`（命中的是原形时标注） |
 | `app/components/word/WordLookupPopover.vue` | 改：命中变形词时显示「原形 xxx」小节 |
 | `_tools/_diag_coverage.mjs` / `_diag_coverage2.mjs` | 新增：词典覆盖率诊断（文章词 vs 索引） |
+| `scripts/extract-textbook-articles.py` | 新增：**莱芜五四制课本 PDF → 课文 article 提取器**（13 册 → 13 个 `public/dicts/en/article/LWXX_*/LWCZ_*.json` + `public/list/article.json` 13 条） |
+| `scripts/textbook_text_repair.py` | 新增：课文文本清洗 + **断词修复判据 R1~R5**（尺子与修法共用同一套，`find_broken()`） |
+| `_tools/check_textbook_articles.py` | 新增：课本课文体检器 **280 项**（含 HTTP） |
+| `_tools/_tb_revert_check.py` | 新增：体检器**退回验证**（6 个坏样本各精确红在自己那条 + 1 个负对照） |
+| `_tools/_tb_browse.js` / `_tb_layout.js` | 新增：跟打页 Playwright 实测 + 截图（书单 → 进书 → 跟打） |
+
+## 莱芜课本课文（2026-11-21 新增）
+
+PDF 源：`C:\Users\17321\WPSDrive\403466883\WPS云盘\莱芜英语课本\压缩版\*.pdf`（13 册：
+小学三上~五下 6 册 + 初中六上~九上 7 册）。**山东版（莱芜五四制）**，八下整册课文客观少（11 篇）。
+
+产物（**都不改任何前端代码**，书单页 `book-list.vue` 直接读 `public/list/article.json`）：
+
+| 册 | 文件 | 篇数 | 字符数 |
+|---|---|---|---|
+| 小学三四 | `LWXX_3_1 / 3_2` | 37 / 32 | 8067 / 9030 |
+| 小学四上四下 | `LWXX_4_1 / 4_2` | 30 / 26 | 12562 / 13068 |
+| 小学五上五下 | `LWXX_5_1 / 5_2` | 30 / 25 | 20888 / 16372 |
+| 初中六上六下 | `LWCZ_6_1 / 6_2` | 20 / 22 | 13596 / 16386 |
+| 初中七上七下 | `LWCZ_7_1 / 7_2` | 24 / 24 | 23010 / 28538 |
+| 初中八上八下 | `LWCZ_8_1 / 8_2` | 27 / 11 | 44329 / 18111 |
+| 初中九上 | `LWCZ_9_1` | 44 | 79193 |
+
+合计 328 篇 / 约 30.6 万字符。`public/list/article.json` 里 id **250~262**，
+`enName` = `lwxx_3_1`…`lwcz_9_1`，`url` = `<KEY>.json`，`length` 与实际篇数一致。
+
+```powershell
+# 提取（调试期一律先 --dump，不写文件；--full 打印全部段落；--only 只跑一册）
+python scripts\extract-textbook-articles.py --dump
+python scripts\extract-textbook-articles.py --dump --full --only '小学五四-三年级上册.pdf'
+python scripts\extract-textbook-articles.py                # 写入模式（会改 public/）
+
+# A/B 开关（默认全开 = 过滤生效）
+$env:TTB_REJECT_ELLIPSIS='1'; $env:TTB_REJECT_LOWER='1'; $env:TTB_MIN_WORDS='4'
+```
+
+**课文没有逐句中文翻译**（课本 PDF 只有英文正文）→ `textTranslate` 留空（前端有 `v-if` 守卫）。
+
+### 提取 PDF 的坑（别再犯）
+
+- `has_cjk()` 一刀切会误杀夹带汉字的英文行 → 用「以中文为主」比例判据（≥2 汉字且占比 ≥15%）。
+- 括号动词正则太宽会吃掉课文 → 用**动词白名单**。
+- 同一基线的两个 span 会拼成一行（页脚 `'Unit 1'` + 页码 `'3'` → `'Unit 13'`）→ 页脚类识别必须走 **span 列表**。
+- 扫描页轻微倾斜会按基线聚行把词劈开 → 改**垂直重叠聚行**；且聚行还要卡高度比
+  **min/max ≥ 0.55**（巨型装饰字母会「桥接」两行）。
+- MuPDF 会给出退化 bbox（零宽）的重复字形，还会在字形内部塞真空格 char。
+- 描边叠印层是同一字形画两遍（字符相同、bbox 重合 ≥70%、origin 偏移 0.3~1.1pt）→ 按 bbox 重合度去重。
+- 课本有特殊字体给单词里的**单个字母**做造型（HeinemannSpecial-Bold）→ **span 边界补空格必须用几何间距**
+  （gap > 0.18×size）+ 冒号后必补；按字符类别补会把 "same" 变成 "s a me"。
+- 小学 "Read and enjoy" 韵文是**左右并排两栏** → 必须按列读。
+  判据是「**列内存在硬折行**」（上一行没结句 + 行距 ≤1.8×字号），
+  **不能**用「上一行没结句的比例」——对话气泡里只要有一句以逗号结尾，比例就超阈值，整页对话会被误当两栏。
+- 小学一课 = 结构化标题行 → 下一个结构化标题行 - 1；**Unit 扉页（38pt, x≈199）是硬边界**；
+  页面外侧 x≈403 的 32pt "UNIT n" 是页眉标记不是扉页。
+- 小学切分点**只认结构化标题**（Lesson N / Try yourself / Review N / Read and enjoy）；
+  课名/故事标题只在**同一页 head** 里找，候选需 size≥15、len≥3、首字母大写，
+  并排除「上一行没结句且行距 ≤1.8×字号」的续行。
+- 段跨页时排序必须按 **(页号, y, x)**；只按 y 排会把上一页的行插进当前页 → 真标题被当续行丢掉。
+- 附录在书末 → 见到附录起点标记后面整段丢弃；「Grammar」用字号（≤13pt）区分正文 18pt。
+- 初中不能「一页一篇」：同一课阅读材料跨页 → 改**按锚点切**。
+- **PDF 撇号是 U+2019** → 课文撇号必须归一成 ASCII `'`（跟打页逐字符比对，弯撇号永远打不出来）。
+- 个别字体（HVDComicSerifPro）缺 ToUnicode → 撇号变 **U+FFFD**。
+- 词典有缺词（`couplets`/`phones` 不在 65k 里）→ 不能只靠词典判断词。
+- PowerShell 管道缓冲：`python ... | Select-Object -First N` 输出会丢，必须重定向到文件再 `Get-Content`。
+
+### 课文产物的字段约定
+
+- `public/dicts/en/article/LWXX_3_1.json` = **数组**，每篇
+  `{id, title, titleTranslate, text, textTranslate, audioSrc, lrcPosition, question, nameList, quote, userId}`，篇内 id 从 10000 起。
+- **一句一段**：段落用 `\n\n` 分隔（上游 `genArticleSectionData` 靠这个断句；写成 `\n` → 译文错位）。
+- 跟打页路由 `/practice-articles/{bookId}`，**bookId 是书 id**，篇内定位靠数组下标。
+- 标题格式：`Unit N · Lesson N 课名`（小学）/ 纯话题标题（初中）。
 
 ## 体检器（改测试链路必跑）
 
@@ -106,6 +178,8 @@ python _tools\check_placement.py --http    # 72 项，全绿 exit 0
 python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
 python _tools\check_article_import.py --http # 81 项，全绿 exit 0
 python _tools\check_word_lookup.py --http     # 89 项（查词），全绿 exit 0
+python _tools\check_textbook_articles.py --http # 280 项（莱芜课本课文），全绿 exit 0
+python _tools\_tb_revert_check.py             # 课文体检器退回验证（坏样本精确命中），全绿 exit 0
 ```
 
 `node _tools\_check_lookup_ui.js` 走 Playwright 实测点词（查词链路每次改动必跑），
@@ -233,4 +307,20 @@ node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
   `app/pages/(words)/dict.vue` 里的 `goImportPage()` 会跳 `/import`，那是**云端功能**，本地纯离线模式用不到。
 - 自定义词典/个人词库依赖 Supabase（`runtimeConfig.public.apiBase`），本地没填就不可用。
 - 线上站比 master 新，`dev` 分支页面多但资源走 CDN，不能直接混用。
+
+## 上游既有行为（看着像缺陷，其实不是，别去「修」）
+
+- **跟打页的空格读不出来**：`TypingArticle.vue` 把句子按词切成 `.word`（inline-block），
+  空格由 `Space.vue` 的**空 span**（`width: 0.6rem`）渲染。
+  → `innerText` 读出来是 `HelloElevationI'mLiMing.` 这种**连成一坨**的样子，
+  **视觉上是有空格的**。别据此判定产物有 bug，要看截图。
+- **≤1439px 视口下课文目录面板变全屏 modal**：`PracticeLayout.vue` 的
+  `@media (max-width: 1439px)` 把 `.panel-wrap` 改成全屏 + `rgba(0,0,0,0.5)` 遮罩（z-index 1000），
+  会盖住课文。**所有书都这样**（NCE 也一样），与课本数据无关；≥1440px 才是右侧停靠。
+  要给截图验收用 **1600 宽**视口。
+- **跟打页首次进入弹「重要提示」引导弹窗**（讲键盘冲突插件），点「关闭」即可。
+- **跟打页两条 console error**（`Cannot set properties of undefined (setting 'volume')` /
+  `play() failed because the user didn't interact`）是上游既有，不算缺陷。
+- 课文目录面板在跟打页是**右侧固定面板**，正文在中间；`article-content` 的矩形是
+  `x=432, width=960`（1600 视口）。
 

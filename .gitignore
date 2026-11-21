@@ -42,13 +42,18 @@ apps/TypeWordsMiniApp
 *.tsbuildinfo
 
 # 词库体积大（425 MB），本地灌入，不进版本库
-# 例外：public/dicts/en/article/NCE_1.json 是仓库原有文件，继续跟踪
+# 例外：public/dicts/en/article/ 下的课文（课文是本项目自己从课本 PDF 提取的，必须跟踪）
 public/dicts/**
+!public/dicts/
+!public/dicts/en/
 !public/dicts/en/article/
 !public/dicts/en/article/NCE_1.json
+!public/dicts/en/article/LWXX_*.json
+!public/dicts/en/article/LWCZ_*.json
 
 # 本地体检器产物
 _tools/__pycache__/
+scripts/__pycache__/
 _tools/_shots/
 _shots/
 
