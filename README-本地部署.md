@@ -287,11 +287,37 @@ python _tools\check_book_review.py --http     # 38 项
 **顺带修的上游断点**：`app/core/hooks/dict.ts` 的 `loadDict()` 原来只在「远程 fetch」分支赋
 `runtimeStore.editDict`，本地导入的书自带 articles（不 fetch）→ 详情页显示空书。现在补了 else 分支。
 
+### 自动生成中文译文（导入弹窗里点「翻译成中文」）
+
+导入弹窗的「原文」那行右边有个 **「翻译成中文」** 按钮：填完原文一点，译文框自动出**一句一行**的
+中文，直接和英文句子一一对应，导进去就是中英对照跟打。
+
+**默认翻译源 = 谷歌翻译的公开 gtx 接口**（浏览器直连）。
+
+> ⚠️ **命令行直连 `translate.googleapis.com` 会返回 429**（出口 IP 被限），**浏览器里反而通**。
+> 所以别在终端里试完就断定「接口挂了」—— 本机实测：PowerShell 429，浏览器 fetch 200 + CORS 放行。
+
+**想换成开源自建的**：在弹窗底部「自建翻译服务（可选）」填地址，就改走 LibreTranslate / Argos
+Translate 的 HTTP 接口（地址存 localStorage，下次导入还在）：
+
+```powershell
+# LibreTranslate（开源，MIT）
+docker run -p 5000:5000 libretranslate/libretranslate
+# 然后在弹窗里填：http://localhost:5000
+```
+
+两个坑：
+
+1. **必须逐句串行翻**，句间留 120ms 间隔 —— 并发打过去会被谷歌限流 429；
+2. **翻译和入库必须用同一套切分函数**（`toSentences()`）—— 不然译文和英文句子会整片错位。
+
+慢是正常的：25 句大约 10 秒（按钮会转圈）。翻译失败会弹提示并保留你原来粘的译文，可以直接手动改。
+
 体检器（改这块后必跑）：
 
 ```powershell
 cd C:\Users\17321\Documents\破甲\typewords-src
-python _tools\check_article_import.py --http     # 39 项
+python _tools\check_article_import.py --http     # 51 项
 ```
 
 ## 英语音标页（本地新增，2026-11-20）

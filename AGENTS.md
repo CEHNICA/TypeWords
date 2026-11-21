@@ -61,7 +61,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `app/pages/(articles)/articles.vue` | 死链「创建个人书籍」换成「导入文章」入口；导入成功切当前书 |
 | `app/core/hooks/dict.ts` | 修断点：`loadDict()` 原来只在远程 fetch 分支赋 `runtimeStore.editDict`，本地导入的书自带 articles → 详情页显示空书。补 else 分支 |
 | `i18n/locales/*.json` | 14 个语言包各加 `import_article`（zh=导入文章 / tw=匯入文章 / 其余=Import Article） |
-| `_tools/check_article_import.py` | 新增：文章导入链路体检器 39 项 |
+| `_tools/check_article_import.py` | 新增：文章导入链路体检器 51 项（39 导入 + 12 自动翻译） |
 | `_tools/samples/my_article_en.txt` / `_tools/samples/my_article_zh.txt` | 导入功能的测试样本（9 行英文 / 9 行中文，一一对应） |
 
 ## 体检器（改测试链路必跑）
@@ -94,6 +94,11 @@ python _tools\check_article_import.py --http # 39 项，全绿 exit 0
 15. **本机模型读不了图片**：截图/图片内容要用
     `mcode-tools upload_temp_url <path>` → `mcode-tools connector call connector__matrix__describe_images --args-file <f>`，
     提示词里让它「逐字转录，英文/中文分段标记」，不要让它总结。
+16. **命令行直连谷歌翻译接口会被 429，浏览器里却通**：`translate.googleapis.com` 从
+    PowerShell 打是 429（出口 IP 被限），但 localhost 页面里 `fetch` 同一个地址返回 200 且 CORS 放行。
+    **别在终端里试完就说接口挂了。**
+17. **翻译必须逐句串行 + 句间 120ms 间隔**：并发打过去会被限流 429；
+    而且翻译和入库必须用**同一个** `toSentences()` 切分函数，否则译文与英文句子整片错位。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）

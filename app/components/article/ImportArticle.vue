@@ -36,6 +36,9 @@ const emit = defineEmits<{
 const base = useBaseStore()
 const dataSync = useDataSyncPersistence()
 
+/** 自建翻译服务地址（LibreTranslate / Argos Translate），存 localStorage；空 = 用谷歌 */
+const TRANSLATE_ENDPOINT_KEY = 'tw-translate-endpoint'
+
 let bookName = ref('')
 let articleTitle = ref('')
 let articleTitleTranslate = ref('')
@@ -44,6 +47,87 @@ let rawTranslate = ref('')
 let textFileName = ref('')
 let translateFileName = ref('')
 let saving = ref(false)
+let translating = ref(false)
+let translateEndpoint = ref(localStorage.getItem(TRANSLATE_ENDPOINT_KEY) || '')
+
+/** 填了自建翻译服务地址就存下来（下次导入还在） */
+function onEndpointChange(v: string) {
+  translateEndpoint.value = v
+  const val = v.trim()
+  if (val) localStorage.setItem(TRANSLATE_ENDPOINT_KEY, val)
+  else localStorage.removeItem(TRANSLATE_ENDPOINT_KEY)
+}
+
+/** 原文 → 句子列表（与 submit() 用的是同一套切分，保证翻译和入库句子一一对应） */
+function toSentences(text: string): string[] {
+  return splitEnArticle2(text)
+    .split('\n\n')
+    .flatMap((p) => p.split('\n'))
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+/**
+ * 翻译源
+ * ======
+ * 默认走**谷歌翻译的公开 gtx 接口**（浏览器直连，实测 localhost 页面 fetch 返回 200 且 CORS 放行；
+ * 命令行直连这个域名会被 429，所以别想在终端里调）。
+ *
+ * 填了「自建翻译服务地址」就改走**开源自建**的 LibreTranslate / Argos Translate HTTP 接口：
+ *   - LibreTranslate: docker run -p 5000:5000 libretranslate/libretranslate
+ *   - Argos Translate: 它是 Python 库，一般包一层 HTTP 服务
+ * 两者都是 POST /translate {q, source, target, format:'text'} → {translatedText}
+ */
+async function translateOne(sentence: string): Promise<string> {
+  const custom = (localStorage.getItem(TRANSLATE_ENDPOINT_KEY) || '').trim()
+  if (custom) {
+    const r = await fetch(custom.replace(/\/+$/, '') + '/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: sentence, source: 'en', target: 'zh', format: 'text' })
+    })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const j = await r.json()
+    const t = (j?.translatedText || j?.translation || '').trim()
+    if (!t) throw new Error('返回格式不对')
+    return t
+  }
+
+  const url =
+    'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' +
+    encodeURIComponent(sentence)
+  const r = await fetch(url)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  const j = await r.json()
+  const seg = j?.[0]
+  if (!Array.isArray(seg)) throw new Error('返回格式不对')
+  const text = seg.map((x: any) => (Array.isArray(x) ? x[0] : '')).join('').trim()
+  return text || sentence
+}
+
+/** 逐句翻译原文 → 填进译文框（一句一行，和原文句子一一对应） */
+async function translateToChinese() {
+  if (translating.value) return
+  const text = rawText.value.trim()
+  if (!text) return Toast.warning('先把原文填上！')
+
+  translating.value = true
+  try {
+    const sentences = toSentences(text)
+    const translated: string[] = []
+    // 串行 + 每句间隔 120ms：并发打过去容易被谷歌限流（429）
+    for (let i = 0; i < sentences.length; i++) {
+      translated.push(await translateOne(sentences[i]))
+      if (i < sentences.length - 1) await new Promise((r) => setTimeout(r, 120))
+    }
+    rawTranslate.value = translated.join('\n')
+    Toast.success(`翻译完成：${translated.length} 句`)
+  } catch (e: any) {
+    Toast.error('翻译失败：' + (e?.message || e) + '（可以自己粘译文）')
+  } finally {
+    translating.value = false
+  }
+}
 
 function close() {
   emit('update:modelValue', false)
@@ -108,13 +192,7 @@ async function submit() {
   saving.value = true
   try {
     // 英文原文：自动断句（复用上游缩写/数字/引号处理）
-    const enText = splitEnArticle2(text)
-    // 摊平成句子列表：上游是「段落用 \n\n、段内句子用 \n」
-    const enSentences: string[] = enText
-      .split('\n\n')
-      .flatMap((p) => p.split('\n'))
-      .map((s) => s.trim())
-      .filter(Boolean)
+    const enSentences = toSentences(text)
 
     // 中文译文：优先「一句一行」逐句对齐；行数对不上才退回上游中文断句器再截断/补空
     let zhSentences: string[] = []
@@ -197,7 +275,7 @@ async function submit() {
     <div class="import-article">
       <div class="title text-xl mb-1">导入文章</div>
       <div class="text-sm color-gray mb-4">
-        选一个 txt / md 文件当原文（一句话一行或整段都行，会自动断句）；译文可以再选一个中文文件，也可以直接粘。译文写成一句一行，就和原文句子一一对应。
+        选一个 txt / md 文件当原文（一句话一行或整段都行，会自动断句）；译文可以再选一个中文文件，也可以直接粘。译文写成一句一行，就和原文句子一一对应。填完原文点「翻译成中文」能自动生成译文（一句一行），再自己改也来得及。
       </div>
 
       <div class="flex gap-4">
@@ -216,10 +294,15 @@ async function submit() {
 
       <div class="flex items-center justify-between mt-4 mb-1">
         <div class="text-sm color-gray">原文（必填）</div>
-        <label class="base-button normal text cursor-pointer">
-          选择文件
-          <input type="file" accept=".txt,.md,.markdown" class="hidden" @change="onTextFileChange" />
-        </label>
+        <div class="flex items-center gap-2">
+          <label class="base-button normal text cursor-pointer">
+            选择文件
+            <input type="file" accept=".txt,.md,.markdown" class="hidden" @change="onTextFileChange" />
+          </label>
+          <BaseButton size="small" type="info" :loading="translating" @click="translateToChinese">
+            翻译成中文
+          </BaseButton>
+        </div>
       </div>
       <Textarea v-model="rawText" :autosize="false" class="h-40" placeholder="选文件或直接粘贴英文原文" />
 
@@ -231,6 +314,15 @@ async function submit() {
         </label>
       </div>
       <Textarea v-model="rawTranslate" :autosize="false" class="h-28" placeholder="选文件或直接粘贴中文译文" />
+
+      <div class="flex items-center gap-3 mt-2">
+        <div class="text-sm color-gray shrink-0">自建翻译服务（可选）</div>
+        <BaseInput
+          :model-value="translateEndpoint"
+          placeholder="LibreTranslate / Argos 的地址，如 http://localhost:5000；留空就用谷歌"
+          @update:model-value="onEndpointChange"
+        />
+      </div>
 
       <div class="text-sm color-gray mt-3">
         已选原文：{{ textFileName || '（未选）' }} ｜ 译文：{{ translateFileName || '（未选）' }}

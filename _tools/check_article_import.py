@@ -329,7 +329,68 @@ def check_locale():
         check("中文文案是「导入文章」", False, "i18n/locales/zh.json 不存在")
 
 
-# ---------------------------------------------------------------- 8. HTTP
+# ---------------------------------------------------------------- 8. 自动翻译
+def check_translate():
+    """自动生成译文：逐句翻译 → 一句一行 → 和原文句子一一对应。
+
+    坑（实测）：
+      - 逐句串行 + 间隔，不能并发打过去，否则被谷歌限流 429；
+      - 翻译和入库必须用**同一套**切分函数，否则译文和英文句子对不上；
+      - 命令行直连 translate.googleapis.com 是 429，浏览器里才通（别拿终端测就说接口挂了）。
+    """
+    if not exists(IMPORT_VUE):
+        check("导入组件存在（app/components/article/ImportArticle.vue）", False, "文件不存在")
+        return
+    src = strip_comments(read(IMPORT_VUE))
+
+    check("有「翻译成中文」按钮", "翻译成中文" in src)
+    check(
+        "翻译按钮接的是真的翻译函数（不是摆设）",
+        "@click=\"translateToChinese\"" in src and "async function translateToChinese" in src,
+    )
+    check(
+        "逐句翻译（用统一切分函数 toSentences）",
+        "function toSentences" in src and "toSentences(text)" in src,
+    )
+    check(
+        "入库时也用同一套切分（翻译和正文句子数才不会错位）",
+        "const enSentences = toSentences(text)" in src,
+    )
+    check(
+        "译文写回译文框（一句一行）",
+        "rawTranslate.value = translated.join('\\n')" in src,
+    )
+    check(
+        "默认走谷歌 gtx 接口",
+        "translate.googleapis.com/translate_a/single" in src and "client=gtx" in src,
+    )
+    check(
+        "支持自建开源翻译服务（LibreTranslate / Argos 的 /translate）",
+        "/translate" in src and "translatedText" in src and "method: 'POST'" in src,
+    )
+    check(
+        "自建服务地址持久化（localStorage）",
+        "tw-translate-endpoint" in src and "localStorage.setItem" in src,
+    )
+    check(
+        "界面上有「自建翻译服务」输入框",
+        "自建翻译服务" in src and "onEndpointChange" in src,
+    )
+    check(
+        "串行翻译并留间隔（防 429 限流）",
+        "await sleep" not in src and "setTimeout" in src and "for (" in src,
+    )
+    check(
+        "翻译失败有降级提示（能自己粘译文）",
+        "Toast.error" in src and "可以自己粘译文" in src,
+    )
+    check(
+        "翻译有 loading 状态（按钮会转圈）",
+        ":loading=\"translating\"" in src and "let translating = ref(false)" in src,
+    )
+
+
+# ---------------------------------------------------------------- 9. HTTP
 def check_http():
     for path in ("/articles", "/book-list"):
         try:
@@ -354,6 +415,7 @@ def main():
     check_book_detail_route()
     check_article_format()
     check_locale()
+    check_translate()
     if "--http" in sys.argv:
         check_http()
 
