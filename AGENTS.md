@@ -67,6 +67,19 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `server/api/local-articles.get.ts` / `.post.ts` / `.delete.ts` | 新增：服务端副本的 GET / POST / DELETE 接口 |
 | `app/core/hooks/localArticles.ts` | 新增：`mergeServerArticles` 拉取合并 + `syncArticleToServer` 导入后推送 + `pushLocalArticlesToServer` 本机旧书补推 + `removeArticleFromServer` 删书同步 |
 | `_tools/_check_cross_browser.js` | 新增：跨浏览器闭环验收脚本（干净 profile 模拟另一个浏览器，10 项） |
+| `server/utils/wordIndex.ts` | 新增：本地离线词典索引（207 份词库 → 31748 唯一词），缓存挂 `globalThis` + 启动预热 |
+| `server/api/word-query.get.ts` | 新增：`/api/word-query` **三态**接口（200 命中 / 404 确定性未收录 / 503 服务不可用） |
+| `server/plugins/word-index-warmup.ts` | 新增：Nitro 启动预热索引（286ms 载入 31748 词条） |
+| `scripts/build-word-index.mjs` | 新增：Node 版索引构建（`pnpm index:word`，5.2s / 19.8MB；替代已删的 `_tools/build_word_index.py`） |
+| `app/core/config/env.ts` | 新增 `CLOUD_WORD_QUERY_ENABLED`：API 指向 localhost 时自动关掉云端查词兜底 |
+| `app/core/utils/wordLookup.ts` | 改：本地三态优先，只有 `unavailable` 才走云端；404 = 确定性 miss |
+| `app/core/hooks/useWordLookup.ts` | 改：`requestSeq` 竞态守卫（连点不同词不串结果） |
+| `app/core/hooks/sound.ts` | 改：发音加 1.5s 超时回退浏览器 TTS（dictvoice 挂起时不卡） |
+| `app/components/word/WordLookupPopover.vue` | 改：砍掉有道整页 iframe 与词典 tab，只留释义/例句/短语/近义词；未收录才给外链 |
+| `启动.cmd` | 改：首次运行若缺 `data/word-index.json` 自动构建（**必须保持纯 ASCII**） |
+| `_tools/check_word_lookup.py` | 新增：查词链路体检器 **52 项**（服务端三态 / cache 写回 / globalThis / ensureIndex / 预热 / HTTP <200ms） |
+| `_tools/_check_lookup_ui.js` | 新增：浏览器实测（0 iframe / 0 tab / 端到端 <500ms / **全程无云端查词请求** / **全程无外网词典页请求**） |
+| `_tools/_shot_lookup.js` | 新增：查词浮层截图（供视觉模型验收） |
 
 ## 体检器（改测试链路必跑）
 
@@ -76,7 +89,11 @@ python _tools\check_test_flow.py --http     # 17 项，全绿 exit 0
 python _tools\check_placement.py --http    # 32 项，全绿 exit 0
 python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
 python _tools\check_article_import.py --http # 81 项，全绿 exit 0
+python _tools\check_word_lookup.py --http     # 52 项（查词），全绿 exit 0
 ```
+
+`node _tools\_check_lookup_ui.js` 走 Playwright 实测点词（查词链路每次改动必跑），
+`node _tools\_check_cross_browser.js` 跑跨浏览器闭环。
 
 ## 硬规矩（补）
 
@@ -126,6 +143,19 @@ python _tools\check_article_import.py --http # 81 项，全绿 exit 0
 23. **`mcp_browser` 的 `run_script` 在本环境不回传返回值**（`pageEvaluate.calls` 恒为 0），
     `page.evaluate` 实际没执行 → **别指望用它读写页面数据**。要在页面里取数据，走
     `_tools/` 下的 Playwright 脚本；要在页面里执行动作，走 `inspect` + `click`/`fill`。
+24. **查词接口必须三态，缓存必须真写回**（2026-11-21 查词慢 4 秒的根因）：
+    - `404` = 词典在但没这个词（前端直接给外链，**不打云端**）；`503` = 服务不可用（才走云端）。
+      混成一种 → 本地 404 被当「没查到」→ 去打 `http://localhost:80`（本机没 Supabase）
+      → 连接被拒，等 **4114ms** 才返回。
+    - 缓存变量必须真的 `store.cache = map` 写回，只 `return map` 等于没缓存
+      （每个请求重读磁盘重解析 20MB JSON，稳定多耗 250ms）。
+    - 缓存挂 `globalThis` —— Nuxt dev 的 HMR 会重置模块级变量。
+    - `isIndexReady()` 在首次加载前恒为 false → 接口必须 `await ensureIndex()`，
+      否则第一个查词请求永远 503。
+    - 发音仍走上游有道 `dictvoice`（外网音频，本地没有），**别让它阻塞释义渲染**。
+25. **点词查义的老入口还有三处没动**（用户嫌界面多，本轮只砍了浮层里的）：
+    `TypingArticle.vue:680-692`、`TypingSentence.vue:112-123` 的右键「有道翻译」，
+    以及 `app/core/utils/index.ts:818 goYoudao()`（**当前无调用方**，是死代码）。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）
