@@ -9,6 +9,7 @@
     "preview": "nuxt preview",
     "i18n:write": "gulp i18nWrite",
     "index:word": "node scripts/build-word-index.mjs",
+    "index:augment": "node scripts/augment-word-index.mjs",
     "check:lookup": "python _tools/check_word_lookup.py --http",
     "test": ""
   },

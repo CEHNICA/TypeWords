@@ -17,6 +17,14 @@ if not exist "data\word-index.json" (
   echo.
 )
 
+REM Extend the index: CC-CEDICT words (proper nouns, derivatives) + word-form
+REM map (asks -> ask). Needs data\word-forms.json; downloads CC-CEDICT once.
+if not exist "data\word-forms.json" (
+  echo   Extending dictionary with CC-CEDICT + word forms (first run, ~20s)...
+  call node scripts\augment-word-index.mjs
+  echo.
+)
+
 start "" "http://localhost:5567"
 call pnpm.cmd run dev
 pause

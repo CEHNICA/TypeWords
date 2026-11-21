@@ -192,6 +192,73 @@ def check_popover():
     check("浮层: Escape 可关闭", "Escape" in src)
 
 
+# ------------------------------------------------- 4.5 词典扩充（CC-CEDICT + 词形）
+AUGMENT_SCRIPT = os.path.join(ROOT, "scripts", "augment-word-index.mjs")
+FORMS_FILE = os.path.join(ROOT, "data", "word-forms.txt")
+
+
+def check_dictionary_expansion():
+    """用户：「很多单词本地词典没有收录，有没有办法预加载上」
+
+    两条补法：
+      A. 词形映射表（asks → ask）：教辅词书只收原形，用户文章里全是变形
+      B. CC-CEDICT 公共领域中英词典：补专有名词、派生词、缩写
+    """
+    check("扩充: 扩充脚本存在", exists(AUGMENT_SCRIPT))
+    if not exists(AUGMENT_SCRIPT):
+        return
+    src = read(AUGMENT_SCRIPT)
+
+    check("扩充: 从 mdbg.net 取 CC-CEDICT（公共领域中英词典）",
+          "mdbg.net" in src and "cedict" in src.lower())
+    check("扩充: 缺词典时自动下载（换机器也能一条命令重建）",
+          "fetch(" in src and "CEDICT_URL" in src)
+    check("扩充: 生成词形映射表", "generateForms" in src and "word-forms" in src)
+    check("扩充: 词形表用 TAB 分隔（base 可能是短语，按空格切会切错）",
+          "\\t${b}" in src or "'\\t'" in src or "\\t" in src)
+    check("扩充: 有不规则动词表（begin→began、take→taken 规则生成不出）",
+          "IRREGULAR" in src and "began" in src and "taken" in src)
+    check("扩充: 词形表按 TAB 解析（服务端）", "indexOf('\\t')" in read(INDEX_UTIL))
+    check("扩充: 服务端有词形回退（miss → 查 forms 表）",
+          "forms.get" in read(INDEX_UTIL))
+    check("扩充: CC-CEDICT 同形词让位给教辅释义（guiding 不能译成「贵定县」）",
+          "'CC-CEDICT'" in read(INDEX_UTIL))
+    check("扩充: 浮层标注原形（查 asks 命中 ask 时要说明）",
+          "baseWord" in read(POPOVER))
+
+    # 产物断言
+    check("扩充: data/word-forms.txt 已生成", exists(FORMS_FILE))
+    if exists(FORMS_FILE):
+        size = os.path.getsize(FORMS_FILE)
+        with open(FORMS_FILE, "r", encoding="utf-8") as f:
+            lines = [ln for ln in f.read().split("\n") if ln]
+        check("扩充: 词形映射条目数 > 20 万", len(lines) > 200000, f"{len(lines)} 条")
+        check("扩充: 词形表体积合理（< 30 MB）", size < 30 * 1024 * 1024, f"{size/1024/1024:.1f} MB")
+        has_tab = any("\t" in ln for ln in lines[:50])
+        check("扩充: 词形表确实是 TAB 分隔", has_tab)
+        mapping = {}
+        for ln in lines:
+            if "\t" in ln:
+                k, v = ln.split("\t", 1)
+                mapping[k] = v
+        for form, base in (("asks", "ask"), ("seeing", "see"), ("began", "begin"),
+                           ("taken", "take"), ("led", "lead"), ("mimicking", "mimic"),
+                           ("months", "month"), ("simplified", "simplify")):
+            check(f"扩充: 词形映射 {form} → {base}", mapping.get(form) == base,
+                  f"实际 {mapping.get(form)}")
+
+    check("扩充: data/word-index.json 已生成", exists(INDEX_FILE))
+    if exists(INDEX_FILE):
+        with open(INDEX_FILE, "r", encoding="utf-8") as f:
+            idx = json.load(f)
+        n = len(idx)
+        check("扩充: 索引词数 > 5 万（扩充后）", n > 50000, f"{n} 词")
+        check("扩充: 索引含 CC-CEDICT 来源的词条",
+              any(v.get("src") == "CC-CEDICT" for v in idx.values()))
+        check("扩充: 索引含专有名词（riemann / claude）",
+              "riemann" in idx and "claude" in idx)
+
+
 # ---------------------------------------------------------------- 5. HTTP
 def check_http():
     # 命中
@@ -252,6 +319,39 @@ def check_http():
     except Exception as e:  # noqa: BLE001
         check("HTTP: 查词响应 < 200ms", False, str(e))
 
+    # ---- 扩充维度：词形回退 ----
+    for form, base in (("asks", "ask"), ("seeing", "see"), ("began", "begin"),
+                       ("taken", "take"), ("led", "lead"), ("mimicking", "mimic"),
+                       ("months", "month"), ("simplified", "simplify")):
+        try:
+            with urllib.request.urlopen(BASE_URL + f"/api/word-query?word={form}", timeout=15) as r:
+                d = json.loads(r.read().decode())["data"]
+                check(f"HTTP: 变形词 {form} 能查到（回退到 {base}）",
+                      bool(d.get("trans")) and d.get("baseWord") == base,
+                      f"baseWord={d.get('baseWord')} src={d.get('src')}")
+        except Exception as e:  # noqa: BLE001
+            check(f"HTTP: 变形词 {form} 能查到（回退到 {base}）", False, str(e))
+
+    # ---- 扩充维度：专名（CC-CEDICT） ----
+    for proper in ("riemann", "claude"):
+        try:
+            with urllib.request.urlopen(BASE_URL + f"/api/word-query?word={proper}", timeout=15) as r:
+                d = json.loads(r.read().decode())["data"]
+                check(f"HTTP: 专名 {proper} 收录了（CC-CEDICT）", bool(d.get("trans")),
+                      str(d)[:100])
+        except Exception as e:  # noqa: BLE001
+            check(f"HTTP: 专名 {proper} 收录了（CC-CEDICT）", False, str(e))
+
+    # ---- CC-CEDICT 同形词不能让位给地名（guiding 在 CC-CEDICT 里是「贵定县」） ----
+    try:
+        with urllib.request.urlopen(BASE_URL + "/api/word-query?word=guiding", timeout=15) as r:
+            d = json.loads(r.read().decode())["data"]
+            check("HTTP: guiding 取教辅释义而非 CC-CEDICT 地名",
+                  d.get("src") != "CC-CEDICT" and d.get("baseWord") == "guide",
+                  f"src={d.get('src')} base={d.get('baseWord')}")
+    except Exception as e:  # noqa: BLE001
+        check("HTTP: guiding 取教辅释义而非 CC-CEDICT 地名", False, str(e))
+
 
 def main():
     print("=" * 68)
@@ -260,6 +360,7 @@ def main():
 
     check_server()
     check_index_builder()
+    check_dictionary_expansion()
     check_frontend()
     check_popover()
     if "--http" in sys.argv:

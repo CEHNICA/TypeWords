@@ -11,6 +11,8 @@ export type Word = {
   id?: string
   custom?: boolean
   word: string
+  /** 查词命中的是原形时标注（查 "asks" 命中 "ask"）——本地离线词典专用字段 */
+  baseWord?: string
   phonetic0: string
   phonetic1: string
   trans: {

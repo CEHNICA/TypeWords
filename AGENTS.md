@@ -34,6 +34,11 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
   已修好。**改词库清单要同步 `public/list/*.json`。**
 - 音标资源：`public/sound/phonetics/*.mp3`（48）、`public/video/phonetics/*.mp4`（48）。
 - 单词发音走外网 `https://dict.youdao.com/dictvoice?audio=`，失败回退浏览器 TTS。
+- 查词索引（**都不进版本库**，`data/` 已 gitignore）：
+  - `data/word-index.json` —— 教辅词库索引（207 份 → 31,748 词）+ CC-CEDICT 补缺（→ **65,655 词**，25.4 MB）
+  - `data/word-forms.txt` —— 词形映射（形变 → 原形，**33.3 万条**，TAB 分隔，6.4 MB）
+  - `data/cedict.txt.gz` —— CC-CEDICT 原始词典（3.9 MB，CC BY-SA 4.0，`augment-word-index.mjs` 会自动下载）
+  - 重建：`node scripts\build-word-index.mjs` → `node scripts\augment-word-index.mjs`（`启动.cmd` 首次运行会自动跑）
 
 ## 本地已改的东西（跟上游 master 不同的地方）
 
@@ -80,6 +85,11 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `_tools/check_word_lookup.py` | 新增：查词链路体检器 **52 项**（服务端三态 / cache 写回 / globalThis / ensureIndex / 预热 / HTTP <200ms） |
 | `_tools/_check_lookup_ui.js` | 新增：浏览器实测（0 iframe / 0 tab / 端到端 <500ms / **全程无云端查词请求** / **全程无外网词典页请求**） |
 | `_tools/_shot_lookup.js` | 新增：查词浮层截图（供视觉模型验收） |
+| `scripts/augment-word-index.mjs` | 新增：**词典扩充**（CC-CEDICT 补专名/派生词 + 预生成词形映射表 `data/word-forms.txt`） |
+| `server/utils/wordIndex.ts` | 改：加 `loadForms()` 词形映射（miss → 回退原形）+ CC-CEDICT 同形词让位给教辅释义 |
+| `app/core/types/types.ts` | 改：`Word` 加 `baseWord?`（命中的是原形时标注） |
+| `app/components/word/WordLookupPopover.vue` | 改：命中变形词时显示「原形 xxx」小节 |
+| `_tools/_diag_coverage.mjs` / `_diag_coverage2.mjs` | 新增：词典覆盖率诊断（文章词 vs 索引） |
 
 ## 体检器（改测试链路必跑）
 
@@ -89,11 +99,19 @@ python _tools\check_test_flow.py --http     # 17 项，全绿 exit 0
 python _tools\check_placement.py --http    # 32 项，全绿 exit 0
 python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
 python _tools\check_article_import.py --http # 81 项，全绿 exit 0
-python _tools\check_word_lookup.py --http     # 52 项（查词），全绿 exit 0
+python _tools\check_word_lookup.py --http     # 89 项（查词），全绿 exit 0
 ```
 
 `node _tools\_check_lookup_ui.js` 走 Playwright 实测点词（查词链路每次改动必跑），
 `node _tools\_check_cross_browser.js` 跑跨浏览器闭环。
+
+词典扩充（改了词库/查词就重跑）：
+
+```powershell
+node scripts\build-word-index.mjs     # 重建教辅词库索引
+node scripts\augment-word-index.mjs   # 再灌 CC-CEDICT + 词形映射（缺词典会自动下载）
+node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
+```
 
 ## 硬规矩（补）
 
@@ -156,6 +174,21 @@ python _tools\check_word_lookup.py --http     # 52 项（查词），全绿 exit
 25. **点词查义的老入口还有三处没动**（用户嫌界面多，本轮只砍了浮层里的）：
     `TypingArticle.vue:680-692`、`TypingSentence.vue:112-123` 的右键「有道翻译」，
     以及 `app/core/utils/index.ts:818 goYoudao()`（**当前无调用方**，是死代码）。
+26. **词典扩充的坑（2026-11-21，CC-CEDICT + 词形映射）**：
+    - CC-CEDICT 下载源 `https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz`
+      （**GitHub raw 那份 404，mdbg.net 这份可用**），许可 CC BY-SA 4.0，放在 `data/cedict.txt.gz`（不进版本库）。
+    - **CRLF 坑**：该文件是 CRLF，`split('\n')` 后行尾还带 `\r`，而 **JS 正则的 `.` 不匹配 `\r`**
+      → `...$` 整行匹配失败，一条都解析不出来。先 `replace(/\r\n/g,'\n')`。
+    - **词形表必须用 TAB 分隔**（`form\tbase`）：base 里可能有含空格的短语（CC-CEDICT 混着
+      `according to` / `guided tour`），按空格切会切错并**覆盖别的单词的正确映射**
+      （实测 `months` 被 `months and years` 的行顶掉）。
+    - **形态规则只对单词做**：对短语生成形态会产出 `guided tourred` 这种垃圾。
+    - **`ic` 结尾的词走 ic→ck**：`mimic → mimicking / mimicked`（别用双写规则，会变成 `mimicking`）。
+    - **不规则动词表优先写入**：词库里有脏条目（`le` 的释义其实是 `lead`）会抢 `led` 的映射。
+    - **CC-CEDICT 有同形污染**：`guiding` 在词典里是贵州地名「贵定县」。服务端命中 CC-CEDICT 条目时，
+      若存在**教辅词书**的原形映射（guiding → guide），优先给教辅释义。
+    - 实测覆盖率（用户那篇导入文章 226 个词）：扩充前 73.0% → 扩充后 **96.9%**。
+      剩下的 3.1% 是冷僻专名（stepanov / mangoldt / fourier-analytic）。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）

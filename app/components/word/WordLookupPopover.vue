@@ -145,6 +145,14 @@ watch(
             :pos-space="false"
           />
 
+          <!-- 命中的是原形（查 asks 命中 ask）→ 标一句原形，别让人以为是新词 -->
+          <div v-if="wordLookupState.data.baseWord" class="wl-section">
+            <div class="wl-section-title">原形</div>
+            <div class="wl-sentence">
+              <span class="wl-en">{{ wordLookupState.data.baseWord }}</span>
+            </div>
+          </div>
+
           <!-- 例句 -->
           <div v-if="wordLookupState.data.sentences?.length" class="wl-section">
             <div class="wl-section-title">例句</div>
