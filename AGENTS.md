@@ -106,6 +106,9 @@ python _tools\check_article_import.py --http # 60 项，全绿 exit 0
     - 同级操作统一成同款按钮；主按钮用品牌蓝 `#409eff`（`--btn-primary` 默认的蓝灰显脏）；
     - 低频高级项默认 `<details>` 折叠收起；
     - 弹窗必须 `max-height` + 内容区 `overflow-y: auto`，否则长内容把底部按钮顶出屏幕。
+19. **Playwright 独立上下文是干净 profile，没有 IndexedDB**：只能用来验样式和跑「临时导一篇」
+    的功能闭环，**不能用它判断用户书架里有没有某本书**（用户数据在浏览器真实 profile 的 IndexedDB
+    `keyval-store` → `keyval` 里）。截图脚本：`_tools/_shot_dialog.js`。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）
