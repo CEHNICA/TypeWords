@@ -83,7 +83,15 @@ function shortTrans(word: Word): string {
   const cn = word?.trans?.[0]?.cn || ''
   const first = cn.split(/[；;]/)[0].trim()
   const cut = first.length > 14 ? first.slice(0, 14) + '…' : first
-  return cut || word?.word || ''
+  return cut || cleanWord(word)
+}
+
+/**
+ * 小学习题册的单词里撇号常写成 "what' s"、"they' re"（撇号后带空格）。
+ * 直接显示会断词，念出来也怪 —— 统一把撇号收紧。
+ */
+function cleanWord(word: Word): string {
+  return (word?.word || '').replace(/\s*'\s*/g, "'").trim()
 }
 
 /**
@@ -179,7 +187,7 @@ function nextQuestion() {
   submitted = false
   selectedIndex = -1
   levelChanged = ''
-  if (settingStore.wordSound) playWordAudio(word.word, false)
+  if (settingStore.wordSound) playWordAudio(cleanWord(word), false)
 }
 
 function select(i: number) {
@@ -358,14 +366,16 @@ function addWrongToBook() {
 
 /** 导出 CSV 给老师 */
 function exportCsv() {
-  const rows: string[][] = [['单词', '音标', '释义', '级别', '结果']]
+  const rows: string[][] = [['单词', '音标', '释义', '级别', '结果', '误选单词', '误选释义']]
   for (const r of records) {
     rows.push([
-      r.word.word,
+      cleanWord(r.word),
       r.word.phonetic1 || r.word.phonetic0 || '',
       shortTrans(r.word),
       r.levelLabel,
       r.correct ? '答对' : '答错',
+      r.correct ? '' : cleanWord(r.chosen),
+      r.correct ? '' : shortTrans(r.chosen),
     ])
   }
   const csv =
@@ -529,9 +539,9 @@ onMounted(() => {
 
       <div v-if="question" class="flex flex-col gap-4">
         <div class="text-4xl en-article-family flex flex-wrap items-center gap-3">
-          <span>{{ question.candidates[question.correctIndex].word.word }}</span>
+          <span>{{ cleanWord(question.candidates[question.correctIndex].word) }}</span>
           <span class="text-xl">{{ question.candidates[question.correctIndex].word.phonetic1 }}</span>
-          <VolumeIcon title="发音" :cb="() => playWordAudio(question.candidates[question.correctIndex].word.word, true)" />
+          <VolumeIcon title="发音" :cb="() => playWordAudio(cleanWord(question.candidates[question.correctIndex].word), true)" />
         </div>
 
         <div class="grid gap-3">
@@ -543,20 +553,33 @@ onMounted(() => {
               'text-green-600': submitted && i === question.correctIndex,
               'text-red-600': submitted && i === selectedIndex && i !== question.correctIndex,
             }"
-            @click="submitted ? playWordAudio(opt.word.word) : select(i)"
+            @click="submitted ? playWordAudio(cleanWord(opt.word)) : select(i)"
           >
             <span class="italic">{{ optionLabels[i] }}</span>
             <span class="mx-2">[{{ [settingStore.shortcutKeyMap[ShortcutKey.ChooseA], settingStore.shortcutKeyMap[ShortcutKey.ChooseB], settingStore.shortcutKeyMap[ShortcutKey.ChooseC], settingStore.shortcutKeyMap[ShortcutKey.ChooseD]][i] }}]</span>
             <span>{{ shortTrans(opt.word) }}</span>
+            <!-- 提交后把这一条对应的英文单词也亮出来：光有中文（「粉色」）对不上学的是哪个词。
+                 用带底色的块跟中文隔开，别让中英文糊成一串 -->
+            <span
+              v-if="submitted"
+              class="text-sm px-2 py-0.5 rounded bg-third ml-2 inline-block align-middle"
+            >{{ cleanWord(opt.word) }}</span>
           </div>
         </div>
 
-        <div v-if="submitted" class="text-base">
+        <!-- 颜色语义统一：绿色 = 正确答案，红色 = 你选错的那条 -->
+        <div v-if="submitted" class="text-base flex flex-col gap-1">
           <span v-if="selectedIndex === question.correctIndex" class="text-green-600">答对了！</span>
-          <span v-else class="text-red-600">
-            正确答案：{{ question.candidates[question.correctIndex].word.word }}
-            （{{ shortTrans(question.candidates[question.correctIndex].word) }}）
-          </span>
+          <template v-else-if="selectedIndex >= 0">
+            <span class="text-green-600">
+              正确答案：{{ cleanWord(question.candidates[question.correctIndex].word) }}
+              （{{ shortTrans(question.candidates[question.correctIndex].word) }}）
+            </span>
+            <span class="text-red-600">
+              你选的是：{{ cleanWord(question.candidates[selectedIndex].word) }}
+              （{{ shortTrans(question.candidates[selectedIndex].word) }}）
+            </span>
+          </template>
         </div>
 
         <div class="mt-2 flex gap-4">
@@ -626,17 +649,27 @@ onMounted(() => {
 
       <div class="flex flex-col gap-2">
         <div class="title">答题明细</div>
-        <div class="flex flex-col gap-1 max-h-80 overflow-auto">
+        <div class="text-sm color-reverse-black">
+          绿色 = 正确答案；答错的题会额外用红色列出你当时错选的词，方便对照复盘。
+        </div>
+        <div class="flex flex-col gap-2 max-h-80 overflow-auto">
           <div
             v-for="(r, i) in records"
             :key="i"
-            class="text-base flex items-center gap-3"
-            :class="r.correct ? 'text-green-600' : 'text-red-600'"
+            data-placement-row="1"
+            class="text-base flex items-start gap-3"
           >
-            <span class="w-6">{{ i + 1 }}</span>
-            <span class="w-40 truncate">{{ r.word.word }}</span>
-            <span class="truncate">{{ shortTrans(r.word) }}</span>
-            <span class="text-sm color-reverse-black">{{ r.levelLabel }}</span>
+            <span class="w-6 shrink-0">{{ i + 1 }}</span>
+            <span class="w-32 shrink-0 text-green-600 break-words">
+              {{ cleanWord(r.word) }}
+            </span>
+            <span class="flex-1 min-w-0 text-green-600 break-words">
+              {{ shortTrans(r.word) }}
+            </span>
+            <span v-if="!r.correct" class="flex-1 min-w-0 text-red-600 break-words">
+              误选：{{ cleanWord(r.chosen) }}（{{ shortTrans(r.chosen) }}）
+            </span>
+            <span class="ml-auto shrink-0 text-sm color-reverse-black">{{ r.levelLabel }}</span>
           </div>
         </div>
       </div>

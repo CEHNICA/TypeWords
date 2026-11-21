@@ -322,6 +322,96 @@ def check_sweep_estimate():
         check("sweepReport 里 total 先于 estimate 声明（避免 const TDZ 报错）", False, "找不到 sweepReport 函数体")
 
 
+# ---------------------------------------------------------------- 2e. 答错时的信息完整性
+def check_wrong_option_display():
+    """用户原话：「我摸底的时候，错误了，其他选项的中文也应该显示。」
+
+    现状缺陷：选项行只给中文释义（"粉色" / "在……里面"），答错后
+      - 提示区只说「正确答案：in（在……里面）」，**误选的那条是哪个英文词完全不知道**
+      - 报告「答题明细」只列正确词，**错选内容彻底丢失**（records 里其实记了 chosen，没渲染）
+    """
+    page = read(PAGE_VUE) if os.path.exists(PAGE_VUE) else ""
+    if not page:
+        check("摸底页面存在（app/pages/(words)/placement-test.vue）", False, "文件不存在")
+        return
+
+    check(
+        "答错时提示区显示「你选的是」（误选词的英文 + 中文释义）",
+        "你选的是" in page,
+        "只报正确答案，孩子不知道自己错选的那条是什么词",
+    )
+    check(
+        "「你选的是」取的是被选中那个候选（selectedIndex），不是固定文案",
+        re.search(r"question\.candidates\[selectedIndex\]", page) is not None,
+        "提示语没有绑定实际选中的选项",
+    )
+    check(
+        "选项行在提交后显示该选项对应的英文单词（中文释义要能对上英文词）",
+        re.search(r">\s*\{\{\s*cleanWord\(opt\.word\)\s*\}\}\s*</span>", page) is not None,
+        "选项只有中文，看不出「粉色」对应哪个英文词",
+    )
+    check(
+        "报告「答题明细」里答错的行显示误选词",
+        "r.chosen" in page,
+        "答题明细只列正确词，错选内容丢了（records 里记了 chosen 却没渲染）",
+    )
+    check(
+        "答题明细的误选用醒目颜色区分（别跟正确答案混成一片）",
+        re.search(
+            r'<span[^>]*class="[^"]*text-(orange|red)-600[^"]*"[^>]*>[\s\S]{0,80}?误选',
+            page,
+        ) is not None,
+        "误选和正确词长得一样，看不出谁是谁",
+    )
+    check(
+        "颜色语义统一：正确答案一律绿色，误选一律红色（红绿不能反着来）",
+        re.search(
+            r'class="text-green-600"[^>]*>\s*正确答案', page
+        ) is not None
+        and re.search(r'class="text-red-600"[^>]*>\s*你选的是', page) is not None,
+        "正确答案用红色 / 误选用别的色 = 红绿语义打架，视觉模型会判为缺陷",
+    )
+    check(
+        "选项里的英文单词有独立底色块（不能跟中文糊成一串）",
+        re.search(
+            r'<span[^>]*class="[^"]*bg-third[^"]*"[^>]*>[\s\S]{0,40}?cleanWord\(opt\.word\)',
+            page,
+        ) is not None,
+        "英文单词只是裸文本，中英文连读看不清",
+    )
+    check(
+        "答题明细各列固定宽度（长释义不能把级别列挤歪）",
+        "ml-auto shrink-0" in page and "flex-1 min-w-0" in page,
+        "级别列没有固定宽度/右对齐，长释义会把它挤到别行去",
+    )
+    check(
+        "答题明细的长释义不截断（截断了等于信息丢失）",
+        re.search(r"class=\"w-56 truncate", page) is None,
+        "误选列还在 truncate，释义被切掉一半",
+    )
+    check(
+        "撇号写法统一收紧（词库里的 \"what' s\" 不能直接显示，会断词）",
+        re.search(r"function cleanWord", page) is not None
+        and re.search(r"replace\(/\\s\*'\\s\*/g", page) is not None,
+        "小学词库的撇号带空格（what' s），直接显示就是断词",
+    )
+    check(
+        "题干 / 选项 / 明细 / CSV 都走 cleanWord",
+        page.count("cleanWord(") >= 8,
+        "还有地方直接用原始 word.word，会露出 \"what' s\"",
+    )
+    check(
+        "导出 CSV 带误选单词/释义两列（给老师看）",
+        "误选单词" in page and "误选释义" in page,
+        "CSV 里没有误选信息",
+    )
+    check(
+        "答对的行不显示误选列（没答错就别占地方）",
+        re.search(r'v-if="!r\.correct"', page) is not None,
+        "误选信息无条件渲染，答对的题也冒出一段",
+    )
+
+
 # ---------------------------------------------------------------- 3. 入口
 def check_entry():
     if not os.path.exists(WORDS_VUE):
@@ -361,6 +451,7 @@ def main():
     check_sweep_and_local_ladders()
     check_broken_word_guard()
     check_sweep_estimate()
+    check_wrong_option_display()
     check_entry()
     if "--http" in sys.argv:
         check_http()

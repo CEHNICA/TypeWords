@@ -55,10 +55,12 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `app/pages/(words)/words-test/[id].vue` | 测试页大改：单轮 20 题上限、成绩小结卡、顺序/随机分流、未作答计错 |
 | `nuxt.config.ts` | `devtools.enabled = false`（浮动按钮盖住落地页主按钮） |
 | `app/core/data/placement.ts` | 新增：7 套教材阶梯（**莱芜小学五四（山东版）** / PEP / 新起点 / 外研 / 冀教 / JOIN IN / KET），难度轴 = 年级。莱芜放第一位 = 默认教材 |
-| `app/pages/(words)/placement-test.vue` | 新增：`/placement-test` 水平摸底测试页（**自适应定位 + 逐级诊断两种测法**、年表报告、导 CSV、错词进错词本） |
+| `app/pages/(words)/placement-test.vue` | 新增：`/placement-test` 水平摸底测试页（**自适应定位 + 逐级诊断两种测法**、年表报告、导 CSV、错词进错词本）；后补 **答错信息完整性**（提示区「你选的是：英文（中文）」+ 选项提交后显示带底色块的英文单词 + 报告明细红色「误选：英文（中文）」+ CSV 加误选两列） |
 | `app/pages/(words)/words.vue` | 「统计」与「我的词典」卡片之间插入「水平摸底测试」卡片 |
 | `app/core/utils/word-test.ts` | 加固：`relsOf()` + `trans` 兜底，小学词库残缺词条不再把整道题吞掉 |
-| `_tools/check_placement.py` | 新增：摸底链路体检器 32 项 |
+| `_tools/check_placement.py` | 新增：摸底链路体检器 32 项；后扩到 **45 项**（新增「答错信息完整性」维度：提示区 / 选项英文 / 明细误选 / CSV 误选列 / 红绿语义 / 撇号收紧 / 列宽不截断） |
+| `_tools/_check_placement_ui.js` | 新增：摸底**浏览器实测** 14 项（答错提示 / 选项英文 / 明细误选 / CSV 下载内容 / 撇号无断词 / 无 JS 报错，音频噪音报错豁免） |
+| `_tools/_shot_placement.js` | 新增：摸底「答错后」+「报告页」截图（给视觉模型验收） |
 | `app/pages/(words)/book-review.vue` | 新增：`/book-review` 整本复习页（**册子多选 + 全词逐个过 + 中断续做 + 每册掌握率报告 + 生词进错词本**）；后补 **选项↔单词对照表**（答错也给出四个选项的英文，默认展开、可点发音）+ **报告页「接着来」区**（接着刷下一册 / 只重刷生词） |
 | `app/core/utils/placement-progress.ts` | 新增：整本复习进度持久化（**localStorage**，按「教材+册子组合」分桶 + `tw-book-review:last` 指针） |
 | `_tools/check_book_review.py` | 新增：整本复习链路体检器 38 项 |
@@ -96,7 +98,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 ```powershell
 cd C:\Users\17321\Documents\破甲\typewords-src
 python _tools\check_test_flow.py --http     # 17 项，全绿 exit 0
-python _tools\check_placement.py --http    # 32 项，全绿 exit 0
+python _tools\check_placement.py --http    # 45 项，全绿 exit 0
 python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
 python _tools\check_article_import.py --http # 81 项，全绿 exit 0
 python _tools\check_word_lookup.py --http     # 89 项（查词），全绿 exit 0
@@ -104,6 +106,8 @@ python _tools\check_word_lookup.py --http     # 89 项（查词），全绿 exit
 
 `node _tools\_check_lookup_ui.js` 走 Playwright 实测点词（查词链路每次改动必跑），
 `node _tools\_check_cross_browser.js` 跑跨浏览器闭环。
+`node _tools\_check_placement_ui.js` 跑摸底答题实测（摸底页每次改动必跑），
+`node _tools\_shot_placement.js` 出「答错后 / 报告页」两张截图给视觉模型验收。
 
 词典扩充（改了词库/查词就重跑）：
 
@@ -189,6 +193,18 @@ node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
       若存在**教辅词书**的原形映射（guiding → guide），优先给教辅释义。
     - 实测覆盖率（用户那篇导入文章 226 个词）：扩充前 73.0% → 扩充后 **96.9%**。
       剩下的 3.1% 是冷僻专名（stepanov / mangoldt / fourier-analytic）。
+27. **摸底页「答错信息」的坑（2026-11-21）**：
+    - 小学词库里撇号是 **ASCII 且紧贴字母**（`they're` / `what's`，共 277 个带撇号词条），
+      **没有** `what' s` 这种写法。视觉模型会把 `they're` OCR 读成 `they' re` ——
+      那是**假阳性**，别跟着改代码；用 DOM 断言（`/\s'\s|\s'|'\s/`）证伪，别信模型的眼睛。
+    - **红绿语义必须统一**：绿色 = 正确答案，红色 = 你选错的那条。
+      提示区「正确答案」原来用红色、选项列表里正确项用绿色 → 同一个东西两种颜色，视觉模型判为缺陷。
+    - **长释义别 truncate**：固定宽度 + `truncate` 会把「help yourself（请自...」切一半，
+      等于信息丢失。改 `flex-1 min-w-0 break-words`，级别列 `ml-auto shrink-0` 固定在右侧。
+    - 小学词库的单词可能是**短语**（`Good morning` / `help yourself`），显示/断言的正则要允许空格，
+      只写 `[a-zA-Z'-]+` 会误判成「没显示英文」。
+    - 词库 JSON 顶层是**数组**（不是 `{words:[...]}`），探查脚本别按后者写。
+    - 浏览器实测脚本选择器别依赖 UnoCSS 类名（`gap-1`→`gap-2` 就废了）→ 明细行加 `data-placement-row`。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）
