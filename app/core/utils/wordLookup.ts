@@ -1,4 +1,5 @@
 import { queryWord } from '../apis/words.ts'
+import { CLOUD_WORD_QUERY_ENABLED } from '../config/env.ts'
 import type { Word } from '../types/types.ts'
 
 const lookupCache = new Map<string, Word | null>()
@@ -18,7 +19,44 @@ export function normalizeWordForLookup(raw: string): string[] {
   return query ? [query] : []
 }
 
-/** 平台无关的查词入口：严格按用户点击的原词查询一次，不做大小写或词形转换。 */
+/**
+ * 查本地词库（服务端离线索引，零网络、毫秒级）。
+ *
+ * 返回三态，不能简单当 null 处理：
+ *   - `hit`        → 命中，data 有值
+ *   - `miss`       → **词典服务正常，但这个词没收录** → 别再打云端（本地云端必然失败，
+ *                    打过去要等 4 秒连接被拒，用户看到的���「查询中...」卡几秒）
+ *   - `unavailable` → 服务端索引没构建 / 网络错误 → 这种才值得走云端兜底
+ */
+type LocalLookup =
+  | { status: 'hit'; data: Word }
+  | { status: 'miss'; data: null }
+  | { status: 'unavailable'; data: null }
+
+async function queryLocalWord(word: string): Promise<LocalLookup> {
+  try {
+    const res = await $fetch<{ success: boolean; data: Word }>('/api/word-query', {
+      query: { word },
+    })
+    if (res?.data) return { status: 'hit', data: res.data }
+    return { status: 'miss', data: null }
+  } catch (e: any) {
+    // 404 = 词典在、词没有 → 确定性 miss
+    const status = e?.statusCode ?? e?.response?.status ?? e?.status
+    if (status === 404) return { status: 'miss', data: null }
+    // 503 / 网络错误 / 其他 → 服务不可用，才考虑云端
+    return { status: 'unavailable', data: null }
+  }
+}
+
+/**
+ * 平台无关的查词入口：严格按用户点击的原词查询一次，不做大小写或词形转换。
+ *
+ * 顺序：**先本地离线词库**（本地 dev server 索引 207 份词库，0 延迟），
+ *       本地明确没收录 → 直接返回（不外网）；
+ *       本地服务不可用 → 才走云端 Supabase。
+ * 之前是直接打云端 → 本地没配 apiBase 必然失败 → 弹有道整页 iframe，慢得要死。
+ */
 export async function resolveWordLookup(rawWord: string): Promise<WordLookupResolution> {
   const query = rawWord.trim()
   const candidates = normalizeWordForLookup(rawWord)
@@ -28,8 +66,16 @@ export async function resolveWordLookup(rawWord: string): Promise<WordLookupReso
     return { query, candidates, data: lookupCache.get(query) ?? null }
   }
 
-  const res = await queryWord({ word: query })
-  const data = res.success && res.data ? res.data : null
+  const local = await queryLocalWord(query)
+  let data: Word | null = null
+
+  if (local.status === 'hit') {
+    data = local.data
+  } else if (local.status === 'unavailable' && CLOUD_WORD_QUERY_ENABLED) {
+    const res = await queryWord({ word: query })
+    data = res.success && res.data ? res.data : null
+  }
+
   lookupCache.set(query, data)
   return { query, candidates, data }
 }

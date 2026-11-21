@@ -1,4 +1,17 @@
 <script setup lang="ts">
+/**
+ * 点词查义浮层
+ * ============
+ * 之前：查词打云端 Supabase → 本地没配 apiBase 必然失败 → 弹 **有道整页 iframe**
+ *       → 加载外网广告页，慢；而且浮层里塞了一堆按钮（有道/金山 tab + 新窗口打开）。
+ *
+ * 现在：查词先走**本地离线词库**（本地 dev server 索引 207 份词库 / 3.1 万词，0 延迟）：
+ *   - 命中 → 直接显示释义卡片（词性释义 + 例句 + 短语 + 同反义），**不发任何外网请求**；
+ *   - 未命中 → 只给两个外链词典按钮（有道 / 金山），**不再自动 iframe 加载外网页面**
+ *     （用户要查自己点，弹窗瞬间就出来）。
+ *
+ * 发音仍走上游的有道 dictvoice（外网音频，失败回退浏览器 TTS）——那是音频资源，不影响释义速度。
+ */
 import { BaseIcon, Close, VolumeIcon } from '@/base'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -13,23 +26,19 @@ const { t: $t } = useI18n()
 const settingStore = useSettingStore()
 const playWordAudio = usePlayWordAudio()
 const popover = ref<HTMLElement | null>(null)
-const dictionaryTabs = [
-  { value: 'youdao', label: '有道词典' },
-  { value: 'iciba', label: '金山词霸' },
-] as const
-const activeDictionary = ref<(typeof dictionaryTabs)[number]['value']>('youdao')
-const dictionaryLabel = computed(() => dictionaryTabs.find(tab => tab.value === activeDictionary.value)!.label)
-const dictionaryUrl = computed(() => {
+
+/** 外链词典（只在本地词库查不到时出现，点开走新标签页） */
+const externalDictionaries = computed(() => {
   const word = encodeURIComponent(wordLookupState.queryWord)
-  return activeDictionary.value === 'iciba'
-    ? `https://www.iciba.com/word?w=${word}`
-    : `https://dict.youdao.com/result?word=${word}&lang=en`
+  return [
+    { label: '有道词典', url: `https://dict.youdao.com/result?word=${word}&lang=en` },
+    { label: '金山词霸', url: `https://www.iciba.com/word?w=${word}` },
+  ]
 })
 
-const isExternalLookup = computed(() => !wordLookupState.loading && wordLookupState.notFound)
 const style = computed(() => ({
-  left: isExternalLookup.value ? '50%' : `${wordLookupState.x}px`,
-  top: isExternalLookup.value ? '50%' : `${wordLookupState.y}px`,
+  left: `${wordLookupState.x}px`,
+  top: `${wordLookupState.y}px`,
 }))
 
 const collectTarget = computed(() => {
@@ -57,33 +66,8 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-function onDictionaryTabKeydown(e: KeyboardEvent) {
-  const index = dictionaryTabs.findIndex(tab => tab.value === activeDictionary.value)
-  let nextIndex: number
-  switch (e.key) {
-    case 'ArrowRight':
-      nextIndex = (index + 1) % dictionaryTabs.length
-      break
-    case 'ArrowLeft':
-      nextIndex = (index - 1 + dictionaryTabs.length) % dictionaryTabs.length
-      break
-    case 'Home':
-      nextIndex = 0
-      break
-    case 'End':
-      nextIndex = dictionaryTabs.length - 1
-      break
-    default:
-      return
-  }
-  e.preventDefault()
-  activeDictionary.value = dictionaryTabs[nextIndex].value
-  const tabList = (e.currentTarget as HTMLElement).parentElement
-  nextTick(() => tabList?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus())
-}
-
 function updatePopoverPosition() {
-  if (!wordLookupState.visible || !popover.value || isExternalLookup.value) return
+  if (!wordLookupState.visible || !popover.value) return
   const el = popover.value
   const rect = el.getBoundingClientRect()
   const padding = 8
@@ -110,20 +94,7 @@ onUnmounted(() => {
 })
 
 watch(
-  () => [wordLookupState.visible, wordLookupState.loading, wordLookupState.queryWord],
-  () => {
-    activeDictionary.value = 'youdao'
-  }
-)
-
-watch(
-  () => [
-    wordLookupState.visible,
-    wordLookupState.x,
-    wordLookupState.y,
-    wordLookupState.loading,
-    wordLookupState.notFound,
-  ],
+  () => [wordLookupState.visible, wordLookupState.x, wordLookupState.y, wordLookupState.loading, wordLookupState.notFound],
   () => {
     if (!wordLookupState.visible) return
     nextTick(updatePopoverPosition)
@@ -138,59 +109,19 @@ watch(
         v-if="wordLookupState.visible"
         ref="popover"
         class="word-lookup-popover"
-        :class="{ 'word-lookup-popover--external': isExternalLookup }"
         :style="style"
         @click.stop
       >
         <Close class="close-btn" :title="$t('close')" @click="closeWordLookup" />
 
         <template v-if="wordLookupState.loading">
-          <div class="text-sm color-gray py-2 pr-5">查询中...</div>
-        </template>
-        <template v-else-if="wordLookupState.notFound">
-          <div class="flex items-center gap-2 flex-wrap pr-5">
+          <div class="flex items-center gap-2 flex-wrap pr-7">
             <span class="text-lg font-medium">{{ wordLookupState.queryWord }}</span>
-            <VolumeIcon :simple="true" :cb="() => playWordAudio(wordLookupState.queryWord)" />
-            <BaseIcon v-if="collectTarget" @click="openCollect" :title="$t('collect_to_dict')">
-              <IconFluentStarAdd16Regular />
-            </BaseIcon>
-          </div>
-          <div class="mt-1 mb-3 flex items-center gap-3 flex-wrap text-sm">
-            <span class="color-gray">暂未收录</span>
-            <div role="tablist" aria-label="查词词典" class="dictionary-tabs ml-auto">
-              <button
-                v-for="tab in dictionaryTabs"
-                :id="`word-lookup-tab-${tab.value}`"
-                :key="tab.value"
-                type="button"
-                role="tab"
-                :aria-selected="activeDictionary === tab.value"
-                aria-controls="word-lookup-dictionary-panel"
-                :tabindex="activeDictionary === tab.value ? 0 : -1"
-                class="dictionary-tab"
-                @click="activeDictionary = tab.value"
-                @keydown="onDictionaryTabKeydown"
-              >
-                {{ tab.label }}
-              </button>
-            </div>
-            <a :href="dictionaryUrl" target="_blank" rel="noopener noreferrer" class="text-link">在新窗口打开</a>
-          </div>
-          <div
-            id="word-lookup-dictionary-panel"
-            role="tabpanel"
-            :aria-labelledby="`word-lookup-tab-${activeDictionary}`"
-          >
-            <iframe
-              :key="dictionaryUrl"
-              :src="dictionaryUrl"
-              :title="`${dictionaryLabel}：${wordLookupState.queryWord}`"
-              class="dictionary-frame"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-              referrerpolicy="no-referrer"
-            />
+            <span class="text-sm color-gray">查询中...</span>
           </div>
         </template>
+
+        <!-- 本地词库命中：直接给释义，不弹任何外网页面 -->
         <template v-else-if="wordLookupState.data">
           <div class="flex items-center gap-1 flex-wrap pr-7">
             <span class="text-lg font-medium">{{ wordLookupState.data.word }}</span>
@@ -205,6 +136,7 @@ watch(
               <IconFluentStarAdd16Regular />
             </BaseIcon>
           </div>
+
           <TranslationList
             v-if="wordLookupState.data.trans?.length"
             class="mt-2"
@@ -212,6 +144,60 @@ watch(
             :show-full="true"
             :pos-space="false"
           />
+
+          <!-- 例句 -->
+          <div v-if="wordLookupState.data.sentences?.length" class="wl-section">
+            <div class="wl-section-title">例句</div>
+            <div v-for="(s, i) in wordLookupState.data.sentences" :key="i" class="wl-sentence">
+              <div class="wl-en">{{ s.c }}</div>
+              <div v-if="s.cn" class="wl-cn">{{ s.cn }}</div>
+            </div>
+          </div>
+
+          <!-- 短语 -->
+          <div v-if="wordLookupState.data.phrases?.length" class="wl-section">
+            <div class="wl-section-title">短语</div>
+            <div v-for="(s, i) in wordLookupState.data.phrases" :key="i" class="wl-sentence">
+              <div class="wl-en">{{ s.c }}</div>
+              <div v-if="s.cn" class="wl-cn">{{ s.cn }}</div>
+            </div>
+          </div>
+
+          <!-- 近义 / 同根 -->
+          <div v-if="wordLookupState.data.synos?.length" class="wl-section">
+            <div class="wl-section-title">近义词</div>
+            <div v-for="(s, i) in wordLookupState.data.synos" :key="i" class="wl-sentence">
+              <div class="wl-en">
+                <span v-if="s.pos" class="wl-pos">{{ s.pos }}</span>
+                {{ s.cn }}
+              </div>
+              <div v-if="s.ws?.length" class="wl-cn">{{ s.ws.join('、') }}</div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 本地词库没收录：给外链词典，不自动加载外网页面 -->
+        <template v-else-if="wordLookupState.notFound">
+          <div class="flex items-center gap-2 flex-wrap pr-5">
+            <span class="text-lg font-medium">{{ wordLookupState.queryWord }}</span>
+            <VolumeIcon :simple="true" :cb="() => playWordAudio(wordLookupState.queryWord)" />
+            <BaseIcon v-if="collectTarget" @click="openCollect" :title="$t('collect_to_dict')">
+              <IconFluentStarAdd16Regular />
+            </BaseIcon>
+          </div>
+          <div class="mt-1 mb-2 flex items-center gap-3 flex-wrap text-sm">
+            <span class="color-gray">本地词典未收录</span>
+            <a
+              v-for="d in externalDictionaries"
+              :key="d.url"
+              :href="d.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-link"
+            >
+              {{ d.label }}
+            </a>
+          </div>
         </template>
       </div>
     </Transition>
@@ -236,46 +222,36 @@ watch(
   pointer-events: auto;
 }
 
-.word-lookup-popover--external {
-  transform: translate(-50%, -50%);
-  width: min(64rem, calc(100vw - 16px));
-  max-width: min(64rem, calc(100vw - 16px));
+.wl-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-item-border);
 }
 
-.dictionary-tabs {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  border: 1px solid var(--color-item-border);
-  border-radius: 0.5rem;
+.wl-section-title {
+  font-size: 0.75rem;
+  opacity: 0.55;
+  margin-bottom: 4px;
 }
 
-.dictionary-tab {
-  padding: 0.25rem 0.75rem;
-  border: 0;
-  border-radius: 0.25rem;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-
-  &[aria-selected='true'] {
-    background: var(--color-item-border);
-    color: var(--color-main-text);
-  }
-
-  &:focus-visible {
-    outline: 2px solid currentColor;
-    outline-offset: 2px;
-  }
+.wl-sentence {
+  margin-top: 4px;
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
-.dictionary-frame {
-  display: block;
-  width: 100%;
-  height: min(32rem, calc(100dvh - 10rem));
-  border: 0;
-  border-radius: 0.25rem;
-  background: #fff;
+.wl-en {
+  font-weight: 500;
+}
+
+.wl-cn {
+  opacity: 0.65;
+  font-size: 0.8rem;
+}
+
+.wl-pos {
+  opacity: 0.6;
+  margin-right: 4px;
 }
 
 .close-btn {

@@ -23,6 +23,17 @@ const map = {
 
 export const ENV = Object.assign(map['DEV'], common)
 
+/**
+ * 云端查词兜底开关。
+ *
+ * ENV.API 指向 localhost = 本机没跑 Supabase functions → 打过去必然**连接被拒**
+ * （实测 4.1 秒），用户看到的现象是「点完词浮层卡在『查询中...』几秒才出结果」。
+ * 所以本地一律**不打云端**：本地词典说没有就是没有，直接给外链词典。
+ *
+ * 线上部署把 map 里的 API 换成真实域名后，这个开关自动打开。
+ */
+export const CLOUD_WORD_QUERY_ENABLED = !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(ENV.API)
+
 export let AppEnv = {
   TOKEN: '',
   IS_OFFICIAL: false,

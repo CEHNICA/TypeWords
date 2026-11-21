@@ -143,6 +143,7 @@ export function usePlayCorrect() {
 
 const activeWordPlayCountMap = new Map<string, number>()
 let resetWordPlayCountTimer = -1
+let wordAudioFallbackTimer = -1
 
 export function resetActiveWordPlayCount(word: string) {
   if (!word) return
@@ -163,6 +164,8 @@ function getCachedWordAudio(): HTMLAudioElement | null {
 export function cancelWordPracticeAudio() {
   wordPlaybackGeneration++
   ttsPlaybackGeneration++
+  clearTimeout(wordAudioFallbackTimer)
+  wordAudioFallbackTimer = -1
   if (typeof speechSynthesis !== 'undefined') {
     speechSynthesis.pause()
     speechSynthesis.cancel()
@@ -215,19 +218,40 @@ export function usePlayWordAudio() {
     }
     let onended = () => {
       if (generation !== wordPlaybackGeneration) return
+      clearTimeout(wordAudioFallbackTimer)
+      wordAudioFallbackTimer = -1
       onEnd?.()
     }
     wordAudio.onended = onended
-    wordAudio.onplay = () => onPlay?.()
-    wordAudio.onerror = () => {
+    wordAudio.onplay = () => {
+      if (generation !== wordPlaybackGeneration) return
+      // 已经开播就撤掉兜底定时器
+      clearTimeout(wordAudioFallbackTimer)
+      wordAudioFallbackTimer = -1
+      onPlay?.()
+    }
+    const fallbackToTTS = () => {
       if (generation !== wordPlaybackGeneration) return
       const ttsPlay = useTTsPlayAudio()
       ttsPlay(word, { rate: playbackRate, onEnd: onended })
+    }
+    wordAudio.onerror = () => {
+      if (generation !== wordPlaybackGeneration) return
+      fallbackToTTS()
     }
     wordAudio.src = url
     wordAudio.volume = settingStore.wordSoundVolume / 100
     wordAudio.playbackRate = playbackRate
     void wordAudio.play()
+
+    // 外网音频挂起（既不 onplay 也不 onerror）时不能干等 —— 超时后直接走浏览器 TTS。
+    // 有道 dictvoice 在慢网下可能连上十几秒，用户等的是「立刻有声音」。
+    clearTimeout(wordAudioFallbackTimer)
+    wordAudioFallbackTimer = setTimeout(() => {
+      if (generation !== wordPlaybackGeneration) return
+      if (!wordAudio.paused) return // 已经在播了
+      fallbackToTTS()
+    }, 1500)
   }
 
   return playAudio
