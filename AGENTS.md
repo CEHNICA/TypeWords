@@ -54,9 +54,9 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `app/pages/(words)/words.vue` | 「统计」与「我的词典」卡片之间插入「水平摸底测试」卡片 |
 | `app/core/utils/word-test.ts` | 加固：`relsOf()` + `trans` 兜底，小学词库残缺词条不再把整道题吞掉 |
 | `_tools/check_placement.py` | 新增：摸底链路体检器 32 项 |
-| `app/pages/(words)/book-review.vue` | 新增：`/book-review` 整本复习页（**册子多选 + 全词逐个过 + 中断续做 + 每册掌握率报告 + 生词进错词本**） |
+| `app/pages/(words)/book-review.vue` | 新增：`/book-review` 整本复习页（**册子多选 + 全词逐个过 + 中断续做 + 每册掌握率报告 + 生词进错词本**）；后补 **选项↔单词对照表**（答错也给出四个选项的英文，默认展开、可点发音）+ **报告页「接着来」区**（接着刷下一册 / 只重刷生词） |
 | `app/core/utils/placement-progress.ts` | 新增：整本复习进度持久化（**localStorage**，按「教材+册子组合」分桶 + `tw-book-review:last` 指针） |
-| `_tools/check_book_review.py` | 新增：整本复习链路体检器 25 项 |
+| `_tools/check_book_review.py` | 新增：整本复习链路体检器 38 项 |
 
 ## 体检器（改测试链路必跑）
 
@@ -64,7 +64,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 cd C:\Users\17321\Documents\破甲\typewords-src
 python _tools\check_test_flow.py --http     # 17 项，全绿 exit 0
 python _tools\check_placement.py --http    # 32 项，全绿 exit 0
-python _tools\check_book_review.py --http  # 25 项，全绿 exit 0
+python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
 ```
 
 ## 硬规矩（补）
@@ -72,6 +72,10 @@ python _tools\check_book_review.py --http  # 25 项，全绿 exit 0
 7. **灰按钮必须说清为什么灰**：任何 `:disabled` 的 BaseButton 都要同时给 `:disabled-reason`，
    否则用户只看到「点了没反应」。
 8. **改 `nuxt.config.ts` 后必须重启 dev server**，热更新不生效。
+9. **整本复习「接着刷下一册」必须继承内存里的 `results`**：册子组合变 → 桶 key 变
+   （`lw:0,1` → `lw:0,1,2`）→ 直接 `start(false)` 读空桶 → 已测的词全被逼着重测。
+10. **重刷生词（`mode === 'wrong'`）时 `persist()` 直接 return**，不写全量桶：
+    重刷结果记在独立 `retryResults`，写全量桶会把生词在全套里的 0 分冲掉、误判「已掌握」。
 
 
 ## 已知缺口（master 分支本来就没有，别以为是改坏的）

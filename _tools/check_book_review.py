@@ -208,6 +208,80 @@ def check_robustness():
     )
 
 
+# ---------------------------------------------------------------- 6.5 答错 = 学习
+def check_answer_feedback_teaches():
+    """答错时不能只丢一句「正确答案」就完事 —— 测试本身也是学习。
+
+    用户原话：「如果你答错的话，你应该显示其他中文的单词啊。
+    对不对？咱就说测试的归测试，测试其实也是学习的一部分。不要让这个时间浪费掉。」
+
+    题意：四个选项全是中文释义，答错时用户只知道「正确答案是什么」，
+    但**其他三个干扰项分别对应哪个英文单词**完全没露出来 —— 那三个英文单词
+    本来就是他要学的东西，白白浪费。所以答错后必须给出
+    「每个选项 → 它的英文单词」的完整对照表。
+    """
+    src = read(PAGE_VUE)
+    check(
+        "答错时给出每个选项对应的英文单词（不只是正确答案）",
+        re.search(r"optionDetail", src) is not None
+        and re.search(r"\.en\b|en:", src) is not None,
+        "答错只显示正确答案，其他选项的英文单词全浪费了 —— 测试就是学习",
+    )
+    check(
+        "有「选项-单词」对照表的渲染（不只是一行提示文字）",
+        re.search(r"对照|answerDetail|optionDetail|showDetail|detailOpen", src) is not None,
+        "没有对照表呈现形式",
+    )
+    check(
+        "对照表把四个选项都列出来（不是只列一个）",
+        re.search(r"optionDetail\(\)|question\.candidates\.map", src) is not None,
+        "对照表不是全量列出，等于没做",
+    )
+    check(
+        "答对时也能看到单词对照（不惩罚答对的人）",
+        re.search(r"v-if=\"submitted\"[\s\S]{0,400}detail", src) is not None
+        or re.search(r"submitted[\s\S]{0,400}detail-box", src) is not None,
+        "对照表应该提交后一直可看",
+    )
+    check(
+        "对照表里能点单词发音（学完能听）",
+        re.search(r"playWordAudio", src) is not None,
+        "对照表不能点读等于还是只能背",
+    )
+
+
+# ---------------------------------------------------------------- 6.6 结束之后能继续
+def check_continue_after_report():
+    """用户原话：「首先呢，你可以结束，但是呢，结束完之后你又可以继续。」
+
+    报告页不能是终点。必须给出继续的路径，且路径要具体：
+      a) 接着刷下一册 / 下一套书（用户刚学完三上~五下，自然是往六上走）
+      b) 只重刷生词（刚测出来的生词，趁热打铁）
+    """
+    src = read(PAGE_VUE)
+    check(
+        "报告页有「继续」的出口（不是死路）",
+        re.search(r"continueNext|继续下一|接着刷|继续刷", src) is not None,
+        "报告页只能回起点，等于把用户一脚踹回去",
+    )
+    check(
+        "能接着刷下一册（自动接上没复习过的下一册）",
+        re.search(r"nextBook|nextUntested|未复习的下一册|下一册", src) is not None,
+        "没有「接着刷下一册」，用户得自己回设置页重新选",
+    )
+    check(
+        "能只重刷生词（趁热打铁）",
+        re.search(r"retryWrong|重刷生词|只刷生词|再刷生词", src) is not None,
+        "刚测出来的生词没有一键重刷的入口",
+    )
+    check(
+        "继续动作会把生词/进度带到下一轮（不是丢掉重来）",
+        re.search(r"results", src) is not None
+        and re.search(r"phase\s*=\s*['\"]quiz['\"]|start\(", src) is not None,
+        "继续逻辑缺失",
+    )
+
+
 # ---------------------------------------------------------------- 7. HTTP
 def check_http():
     for route, kw in (("/book-review", "整本"), ("/placement-test", "摸底")):
@@ -239,6 +313,8 @@ def main():
         check_progress_resume()
         check_report()
         check_robustness()
+        check_answer_feedback_teaches()
+        check_continue_after_report()
     if "--http" in sys.argv:
         check_http()
 

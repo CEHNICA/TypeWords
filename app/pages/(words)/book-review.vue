@@ -79,6 +79,23 @@ let loadingText = $ref('正在准备词表…')
 /** 生词表分页（几百行一起渲染会卡） */
 let wrongPage = $ref(0)
 let showAllWrong = $ref(false)
+/**
+ * 「选项 → 英文单词」对照表是否展开。
+ *
+ * 用户原话：「如果你答错的话，你应该显示其他中文的单词啊。
+ * 咱就说测试的归测试，测试其实也是学习的一部分。不要让这个时间浪费掉。」
+ *
+ * 四个选项全是中文释义，光看题干那个英文单词，只能知道自己错在哪个意思上；
+ * 但**另外三个干扰项分别对应哪个英文单词**才是这题真正要学的东西 ——
+ * 答错不揭示，等于这一题白做。所以提交后直接把整张对照表摊开。
+ */
+let showDetail = $ref(true)
+/** 当前模式：全量过词 / 只重刷生词 */
+let mode = $ref<'full' | 'wrong'>('full')
+/** 只重刷生词时用的词池（把上一轮错的词再喂一遍，趁热打铁） */
+let wrongRetryPool = $ref<PoolItem[]>([])
+/** 重刷生词这一轮自己的结果（不能污染全量那轮的 results） */
+let retryResults = $ref<Record<string, 0 | 1>>({})
 
 const WRONG_PAGE_SIZE = 50
 const optionLabels = ['A', 'B', 'C', 'D']
@@ -86,7 +103,28 @@ const optionLabels = ['A', 'B', 'C', 'D']
 const ladder = () => PLACEMENT_LADDERS.find(v => v.key === ladderKey) ?? PLACEMENT_LADDERS[0]
 const steps = () => ladder().steps
 const keyOf = (w: Word) => (w?.word || '').trim().toLowerCase()
-const hasResult = (w: Word) => Object.prototype.hasOwnProperty.call(results, keyOf(w))
+/** 当前这一轮的结果集：全量模式用 results，重刷生词用 retryResults（互不污染） */
+const curResults = () => (mode === 'wrong' ? retryResults : results)
+/** 当前这一轮这个词测过没有 */
+const hasResult = (w: Word) => Object.prototype.hasOwnProperty.call(curResults(), keyOf(w))
+
+/**
+ * 本题的「选项 → 英文单词」对照表。
+ *
+ * 题干给一个英文单词，四个选项都是中文释义。
+ * 答错时如果不把干扰项的英文露出来，这题真正要学的东西（另外三个英文单词）
+ * 就白给了 —— 所以这里把四个选项各自的英文单词都摆出来，一眼看清对应关系。
+ */
+function optionDetail(): { label: string, cn: string, en: string, isCorrect: boolean, isChosen: boolean }[] {
+  if (!question) return []
+  return question.candidates.map((c, i) => ({
+    label: optionLabels[i] || String(i),
+    cn: shortTrans(c.word),
+    en: c.word.word || '',
+    isCorrect: i === question!.correctIndex,
+    isChosen: i === selectedIndex,
+  }))
+}
 
 /** 小学词库释义又长又全，低年级读不完 */
 function shortTrans(word: Word): string {
@@ -249,7 +287,12 @@ function select(i: number) {
   selectedIndex = i
   submitted = true
   const correct = i === question.correctIndex
-  results = { ...results, [keyOf(pool[cursor].word)]: correct ? 1 : 0 }
+  const k = keyOf(pool[cursor].word)
+  if (mode === 'wrong') {
+    retryResults = { ...retryResults, [k]: correct ? 1 : 0 }
+  } else {
+    results = { ...results, [k]: correct ? 1 : 0 }
+  }
   if (correct) playCorrect()
   else playBeep()
   persist()
@@ -260,7 +303,12 @@ function skipUnknown() {
   if (submitted || !question) return
   selectedIndex = -1
   submitted = true
-  results = { ...results, [keyOf(pool[cursor].word)]: 0 }
+  const k = keyOf(pool[cursor].word)
+  if (mode === 'wrong') {
+    retryResults = { ...retryResults, [k]: 0 }
+  } else {
+    results = { ...results, [k]: 0 }
+  }
   playBeep()
   persist()
 }
@@ -277,6 +325,8 @@ function advance() {
 /** 每答一题就落盘（几百题，中途关掉不能白干） */
 function persist() {
   const chosen = selectedBooks.length ? selectedBooks : steps().map((_, i) => i)
+  // 重刷生词是**临时的一轮**：不写全量桶，免得把上一轮已掌握的词冲掉
+  if (mode === 'wrong') return
   const payload: BookReviewProgress = {
     ladderKey,
     books: chosen,
@@ -342,10 +392,11 @@ interface BookStat {
 }
 
 function bookStats(): BookStat[] {
+  const src = curResults()
   return books.map(b => {
     const items = pool.filter(p => p.bookIndex === b.index)
     const testedItems = items.filter(p => hasResult(p.word))
-    const right = testedItems.filter(p => results[keyOf(p.word)] === 1).length
+    const right = testedItems.filter(p => src[keyOf(p.word)] === 1).length
     return {
       label: b.label,
       total: items.length,
@@ -357,8 +408,9 @@ function bookStats(): BookStat[] {
 }
 
 function report() {
+  const src = curResults()
   const tested = pool.filter(p => hasResult(p.word))
-  const right = tested.filter(p => results[keyOf(p.word)] === 1).length
+  const right = tested.filter(p => src[keyOf(p.word)] === 1).length
   const rate = tested.length ? Math.round((right / tested.length) * 100) : 0
   const stats = bookStats()
   // 第一个掌握率 <60% 的册子 = 断层（水平上限）
@@ -368,6 +420,20 @@ function report() {
   const untested = pool.length - tested.length
   // 推算：按当前掌握率外推未测部分（不把各册词数直接求和，重复词会虚高）
   const estimate = knownCount + Math.round(untested * (rate / 100))
+  // 重刷生词模式：报的是「刚才那批生词，现在记住了几个」
+  if (mode === 'wrong') {
+    const fixed = right
+    const still = tested.length - right
+    const top = tested.length === 0
+      ? '生词还没重刷'
+      : still === 0
+        ? `生词全记住了！${fixed} 个都答对了`
+        : `${fixed} 个记住了，还有 ${still} 个没过`
+    const advice = still === 0
+      ? '这批生词已经拿下，可以接着往下刷下一册了。'
+      : `还有 ${still} 个生词没过，继续重刷或者回到整本复习。`
+    return { tested, right, rate, stats, weak, allDone, knownCount, untested, estimate, top, advice }
+  }
   const top = allDone
     ? weak
       ? `《${weak.label}》还没吃透，其余都过了`
@@ -387,7 +453,8 @@ function report() {
 
 /** 生词表：全部答错的词 */
 function wrongList() {
-  return pool.filter(p => results[keyOf(p.word)] === 0)
+  const src = curResults()
+  return pool.filter(p => src[keyOf(p.word)] === 0)
 }
 
 /** 生词表分页数据 */
@@ -401,12 +468,88 @@ function wrongPageCount() {
   return Math.ceil(wrongList().length / WRONG_PAGE_SIZE) || 1
 }
 
+// ---------------------------------------------------------------- 继续（结束不是终点）
+/**
+ * 下一册该刷哪本？
+ *
+ * 用户原话：「你可以结束，但是呢，结束完之后你又可以继续。」
+ * 报告页如果只有「再选册子」把人踹回起点，这轮学的东西就断在这儿了。
+ * 所以要能直接接着往下走：找出当前教材里**还没复习过的第一册**，
+ * 自动把它加进册子组合、接着往下刷。
+ */
+function nextBookIndex(): number {
+  const done = new Set(selectedBooks)
+  const total = steps().length
+  for (let i = 0; i < total; i++) {
+    if (!done.has(i)) return i
+  }
+  return -1
+}
+
+/** 下一册的名字（没有就空串） */
+function nextBookLabel(): string {
+  const i = nextBookIndex()
+  return i >= 0 ? steps()[i].label : ''
+}
+
+/**
+ * 接着刷下一册：把没复习过的那一册加进来，直接开新一轮。
+ *
+ * 注意：册子组合变了 → 进度桶的 key 也变了 → 直接 start(false) 会读到空桶，
+ * 把上一轮已测的词全冲掉、逼着重测一遍。所以这里**继承内存里的 results**，
+ * 已测过的词自然跳过，只出新册子的题。
+ */
+async function continueNextBook() {
+  const i = nextBookIndex()
+  if (i < 0) return
+  const carried = { ...results }
+  if (!selectedBooks.includes(i)) selectedBooks = [...selectedBooks, i].sort((a, b) => a - b)
+  mode = 'full'
+  await loadBooks()
+  phase = 'loading'
+  loadingText = '正在准备词表…'
+  results = carried
+  cursor = 0
+  while (cursor < pool.length && hasResult(pool[cursor].word)) cursor++
+  phase = 'quiz'
+  nextQuestion()
+  // 新组合的桶也落一份（带继承来的结果），下次刷新能从这个组合续做
+  persist()
+}
+
+/**
+ * 只重刷生词：把刚测出来的生词再喂一遍，趁热打铁。
+ *
+ * 注意：重刷用的是**同一套书的同一批词**（progressKey 不变），
+ * 但只把生词放进题池，所以不会把已掌握的词又过一遍。
+ */
+async function retryWrong() {
+  const wrong = wrongList()
+  if (!wrong.length) {
+    Toast.info('这一套没有生词，全答对了，没什么好重刷的')
+    return
+  }
+  mode = 'wrong'
+  wrongRetryPool = wrong
+  await loadBooks()
+  phase = 'loading'
+  loadingText = '正在准备生词…'
+  // 题池换成生词；用 retryResults 单独记这一轮（生词在全量 results 里本来就是 0，
+  // 用它判断「已测」会被整个跳过）
+  pool = wrong.slice()
+  retryResults = {}
+  cursor = 0
+  phase = 'quiz'
+  nextQuestion()
+}
+
 // ---------------------------------------------------------------- 导出 / 错词本
 function exportCsv() {
+  const src = curResults()
   const rows: string[][] = [['单词', '音标', '释义', '所属册子', '结果']]
   for (const p of pool) {
     if (!hasResult(p.word)) continue
-    const ok = results[keyOf(p.word)] === 1
+    const ok = src[keyOf(p.word)] === 1
     rows.push([
       p.word.word,
       p.word.phonetic1 || p.word.phonetic0 || '',
@@ -462,6 +605,9 @@ function restart() {
   phase = 'setup'
   pool = []
   results = {}
+  retryResults = {}
+  wrongRetryPool = []
+  mode = 'full'
   cursor = 0
   books = []
 }
@@ -636,6 +782,37 @@ onMounted(async () => {
           </span>
         </div>
 
+        <!--
+          答错 = 一道现成的学习机会：四个选项的中文各对应哪个英文单词，全部摊开。
+          否则干扰项的英文就白给了，这一题等于只考了一个词。
+        -->
+        <div v-if="submitted" class="detail-box">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="title">这一题的四个单词（选项 ↔ 英文）</div>
+            <BaseButton type="text" @click="showDetail = !showDetail">
+              {{ showDetail ? '收起' : '展开对照' }}
+            </BaseButton>
+          </div>
+          <div v-if="showDetail" class="grid md:grid-cols-2 gap-2 mt-2">
+            <div
+              v-for="d in optionDetail()"
+              :key="d.label"
+              class="detail-row"
+              :class="{ 'is-correct': d.isCorrect, 'is-chosen': d.isChosen && !d.isCorrect }"
+            >
+              <span class="detail-label">{{ d.label }}</span>
+              <span class="detail-cn">{{ d.cn }}</span>
+              <span class="detail-arrow">→</span>
+              <span
+                class="detail-en"
+                @click="playWordAudio(d.en, true)"
+              >{{ d.en }}</span>
+              <span v-if="d.isCorrect" class="detail-tag correct">正确</span>
+              <span v-else-if="d.isChosen" class="detail-tag wrong">你选的</span>
+            </div>
+          </div>
+        </div>
+
         <div class="mt-2 flex gap-4 flex-wrap">
           <BaseButton v-if="submitted" type="primary" @click="advance">
             下一个[{{ settingStore.shortcutKeyMap[ShortcutKey.WordTestingNext] }}]
@@ -651,7 +828,7 @@ onMounted(async () => {
     <!-- ============================ 4. 报告 ============================ -->
     <div v-else class="card flex flex-col gap-5">
       <div>
-        <div class="page-title">复习结果</div>
+        <div class="page-title">{{ mode === 'wrong' ? '生词重刷结果' : '复习结果' }}</div>
         <div class="text-3xl font-bold mt-2">{{ report().top }}</div>
         <div class="text-base mt-1">
           已过 {{ report().tested.length }} / {{ pool.length }} 个词
@@ -716,6 +893,46 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!--
+        结束不是终点。用户原话：「你可以结束，但是呢，结束完之后你又可以继续。」
+        所以这里给两条明确的继续路径，不用把人踹回设置页重新选。
+      -->
+      <div class="continue-box flex flex-col gap-3">
+        <div class="title">接着来</div>
+        <div class="flex gap-4 flex-wrap">
+          <BaseButton
+            v-if="mode !== 'wrong' && nextBookIndex() >= 0"
+            type="primary"
+            @click="continueNextBook"
+          >
+            接着刷下一册：{{ nextBookLabel() }}
+          </BaseButton>
+          <BaseButton
+            v-if="mode !== 'wrong' && wrongList().length > 0"
+            type="primary"
+            @click="retryWrong"
+          >
+            只重刷生词（{{ wrongList().length }} 个）
+          </BaseButton>
+          <BaseButton
+            v-if="mode === 'wrong'"
+            type="primary"
+            @click="restart"
+          >
+            回到整本复习
+          </BaseButton>
+        </div>
+        <div class="text-sm color-reverse-black">
+          {{
+            mode === 'wrong'
+              ? '刚才刷的是生词。想接着往下走就回到整本复习。'
+              : nextBookIndex() >= 0
+                ? `这本教材你还没复习的是《${nextBookLabel()}》，点一下直接接着刷。`
+                : '这套教材的册子你都复习过了。'
+          }}
+        </div>
+      </div>
+
       <div class="flex gap-4 flex-wrap">
         <BaseButton type="primary" @click="exportCsv">导出 CSV（给老师）</BaseButton>
         <BaseButton type="info" @click="addWrongToBook">生词加入错词本</BaseButton>
@@ -760,5 +977,76 @@ onMounted(async () => {
 .bar-fill {
   height: 100%;
   transition: width 0.2s;
+}
+
+/* 答错后的「选项 ↔ 英文单词」对照表：这一题真正要学的东西摊在这里 */
+.detail-box {
+  border: 1px solid var(--color-second, #eee);
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-second, rgb(0 0 0 / 2%));
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.3rem;
+  border: 1px solid transparent;
+  font-size: 0.95rem;
+
+  &.is-correct {
+    border-color: rgb(34 197 94 / 60%);
+    background: rgb(34 197 94 / 8%);
+  }
+
+  &.is-chosen {
+    border-color: rgb(239 68 68 / 60%);
+    background: rgb(239 68 68 / 8%);
+  }
+}
+
+.detail-label {
+  font-weight: 700;
+  min-width: 1.2rem;
+}
+
+.detail-cn {
+  color: var(--color-main-text);
+}
+
+.detail-arrow {
+  opacity: 0.5;
+}
+
+.detail-en {
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.detail-tag {
+  font-size: 0.75rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.25rem;
+
+  &.correct {
+    background: rgb(34 197 94 / 18%);
+    color: rgb(22 163 74);
+  }
+
+  &.wrong {
+    background: rgb(239 68 68 / 18%);
+    color: rgb(220 38 38);
+  }
+}
+
+/* 报告页的「接着来」区 */
+.continue-box {
+  border: 1px dashed var(--color-main-text);
+  border-radius: 0.4rem;
+  padding: 0.85rem 1rem;
 }
 </style>
