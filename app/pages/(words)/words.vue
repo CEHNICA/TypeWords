@@ -86,6 +86,22 @@ async function loadPracticeCache() {
 
 const shouldShowDialogPracticeMode = [WordPracticeMode.Shuffle, WordPracticeMode.ShuffleWordsTest]
 
+// 下面这几个刻意用普通函数而不是 $computed：
+// 项目开启了 @vue-macros 的 reactivity transform，script 里给 $ref/$computed 变量写 .value 会静默变 undefined。
+function learnedCount() {
+  return Math.max(Number(store.sdict?.lastLearnIndex) || 0, 0)
+}
+
+/** 需要先学满 10 个词才解锁的入口（随机复习 / 按顺序单词测试） */
+function needLearnFirst() {
+  return learnedCount() < 10 && !store.sdict.complete
+}
+
+/** 灰按钮的禁用说明：悬停即可看到，不再「点了没反应」 */
+function learnFirstTip() {
+  return `需先学习至少 10 个单词才解锁（当前已学 ${learnedCount()} 个）。可在「更改进度」里直接调整进度。`
+}
+
 useSeoMeta({
   title: `在线背单词与英语打字练习｜${APP_NAME}`,
   description: '在电脑上选择 CET-4、CET-6、考研、GRE、IELTS 等词库，通过键盘跟打、拼写和科学间隔复习高效背单词。',
@@ -692,6 +708,7 @@ onUnmounted(() => {
               size="large"
               :type="settingStore.wordPracticeMode !== WordPracticeMode.Free ? 'orange' : 'primary'"
               :disabled="!store.sdict.id"
+              :disabled-reason="'请先选择一本词典'"
               :loading="loading"
               @click="systemPractice"
             >
@@ -716,6 +733,7 @@ onUnmounted(() => {
                 class="w-full"
                 v-if="settingStore.wordPracticeMode !== WordPracticeMode.Review"
                 :disabled="!practiceData?.taskWords?.review?.length"
+                :disabled-reason="'当前没有到期需要复习的单词，先去「开始学习」学几个吧'"
                 @click="startPractice(WordPracticeMode.Review, true)"
               >
                 {{ $t('review') }}
@@ -723,7 +741,8 @@ onUnmounted(() => {
               <BaseButton
                 class="w-full"
                 v-if="settingStore.wordPracticeMode !== WordPracticeMode.Shuffle"
-                :disabled="store.sdict.lastLearnIndex < 10 && !store.sdict.complete"
+                :disabled="needLearnFirst()"
+                :disabled-reason="learnFirstTip()"
                 @click="startPractice(WordPracticeMode.Shuffle, true)"
               >
                 {{ $t('random_review') }}
@@ -731,7 +750,8 @@ onUnmounted(() => {
               <BaseButton
                 class="w-full"
                 v-if="settingStore.wordPracticeMode !== WordPracticeMode.ReviewWordsTest"
-                :disabled="store.sdict.lastLearnIndex < 10 && !store.sdict.complete"
+                :disabled="needLearnFirst()"
+                :disabled-reason="learnFirstTip()"
                 @click="startPractice(WordPracticeMode.ReviewWordsTest, true)"
               >
                 {{ $t('words') }}{{ $t('test') }}
@@ -739,7 +759,8 @@ onUnmounted(() => {
               <BaseButton
                 class="w-full"
                 v-if="settingStore.wordPracticeMode !== WordPracticeMode.ShuffleWordsTest"
-                :disabled="store.sdict.lastLearnIndex < 10 && !store.sdict.complete"
+                :disabled="!store.sdict.id"
+                :disabled-reason="'请先选择一本词典'"
                 @click="startPractice(WordPracticeMode.ShuffleWordsTest, true)"
               >
                 {{ $t('random_words_test') }}
@@ -795,6 +816,28 @@ onUnmounted(() => {
         >
         </Calendar>
       </div>
+    </div>
+
+    <div class="card flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div class="flex flex-col gap-1 min-w-0">
+        <div class="title">水平摸底测试</div>
+        <div class="text-base color-reverse-black">
+          不知道现在什么水平？自适应出题：答对升一级、答错退一级，撞上不会的那级就停。
+          结束给「年级定位 + 词汇量估计 + 错词表」，错词能导成 CSV。
+        </div>
+      </div>
+      <BaseButton type="primary" @click="nav('/placement-test')">开始摸底</BaseButton>
+    </div>
+
+    <div class="card flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div class="flex flex-col gap-1 min-w-0">
+        <div class="title">整本复习</div>
+        <div class="text-base color-reverse-black">
+          同时勾几本书，把这几本书的单词全部过一遍，一个不漏。
+          过完给你「这几本书掌握到什么水平」的总结：综合掌握率、每册掌握率、生词表。
+        </div>
+      </div>
+      <BaseButton type="primary" @click="nav('/book-review')">去复习</BaseButton>
     </div>
 
     <div class="card flex flex-col">

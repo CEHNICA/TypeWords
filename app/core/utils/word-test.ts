@@ -12,7 +12,9 @@ const FUZZ_SCORE_BASE = 1 << 18;
 
 function getTrans(word: Word): { cn: string, freq: number }[] {
     let rsMap = new Map<string, { cn: string, freq: number }>();
-    word.trans.forEach(item => {
+    // 有些词库（小学习题册）词条没有 trans 或 relWords.rels，直接访问会崩
+    const trans = Array.isArray(word?.trans) ? word.trans : [];
+    trans.forEach(item => {
         let target = rsMap.get(item.cn);
         if (target) {
             target.freq += item.frequency || 0;
@@ -22,6 +24,12 @@ function getTrans(word: Word): { cn: string, freq: number }[] {
         }
     })
     return Array.from(rsMap.values());
+}
+
+/** 取同根词列表（有些词库词条没有 relWords.rels，取不到就当没有） */
+function relsOf(word: Word): { pos?: string, words: { c: string, cn: string }[] }[] {
+    const rels = word?.relWords?.rels;
+    return Array.isArray(rels) ? rels : [];
 }
 
 function calCommon(str1: string, str2: string): number {
@@ -48,7 +56,9 @@ function calCommon(str1: string, str2: string): number {
 }
 
 function calSimilarity(word1: Word, word2: Word): number {
-    if (word2.trans.length < word1.trans.length) {
+    const t1 = Array.isArray(word1?.trans) ? word1.trans : [];
+    const t2 = Array.isArray(word2?.trans) ? word2.trans : [];
+    if (t2.length < t1.length) {
         [word1, word2] = [word2, word1];
     }
     let word1Trans = getTrans(word1);
@@ -74,8 +84,8 @@ function calSimilarity(word1: Word, word2: Word): number {
         similarity += WORD_CONTAIN_SCORE;
     }
     if (
-        word1.relWords.rels.findIndex(rel => rel.words.findIndex(word => word.c === word2.word) !== -1) !== -1 ||
-        word2.relWords.rels.findIndex(rel => rel.words.findIndex(word => word.c === word1.word) !== -1) !== -1
+        relsOf(word1).findIndex(rel => rel.words.findIndex(word => word.c === word2.word) !== -1) !== -1 ||
+        relsOf(word2).findIndex(rel => rel.words.findIndex(word => word.c === word1.word) !== -1) !== -1
     ) {
         similarity += WORD_CONTAIN_SCORE;
         // console.log('relWords', word1.word, word2.word)
@@ -85,14 +95,17 @@ function calSimilarity(word1: Word, word2: Word): number {
 
 export function buildQuestion(word: Word, list: Word[], maxCount: number = 4): Question {
     let similarityList: { word: Word, similarity: number }[] = []
+    const transTextOf = (w: Word) =>
+        (Array.isArray(w?.trans) ? w.trans : []).map(t => t.cn).join('')
     for (let i = 0; i < list.length; i++) {
         const item = list[i]
+        if (!item || !word) continue
 
-        const wordStr = word.word.toLowerCase()
-        const itemStr = item.word.toLowerCase()
+        const wordStr = (word.word || '').toLowerCase()
+        const itemStr = (item.word || '').toLowerCase()
         if (wordStr === itemStr) continue
 
-        if (word.trans.map(t => t.cn).join('') === item.trans.map(t => t.cn).join('')) continue
+        if (transTextOf(word) === transTextOf(item)) continue
 
         const similarity = calSimilarity(word, item)
         similarityList.push({ word: item, similarity })

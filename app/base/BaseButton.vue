@@ -11,7 +11,7 @@ defineEmits(['click'])
 </script>
 
 <template>
-  <Tooltip :disabled="!keyboard" :title="`${keyboard}`">
+  <Tooltip :disabled="!keyboard && !disabledReason" :title="disabledReason || `${keyboard}`">
     <div
       class="base-button"
       v-bind="$attrs"
@@ -69,7 +69,6 @@ html.dark {
     opacity: 0.6;
     cursor: not-allowed;
     user-select: none;
-    pointer-events: none;
     color: rgba(#fff, 0.4);
   }
 

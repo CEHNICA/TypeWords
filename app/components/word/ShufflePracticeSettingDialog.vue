@@ -3,6 +3,7 @@ import { BaseButton, InputNumber, Slider, Toast } from '@/base'
 import { computed, defineAsyncComponent, watch } from 'vue'
 import { useBaseStore } from '@/core/stores/base.ts'
 import { WordPracticeModeNameMap } from '@/core/config/env'
+import { WordPracticeMode } from '@/core/types/enum'
 import { useSettingStore } from '@/core/stores/setting.ts'
 import { getShufflePracticeWords, toShufflePracticeRange, type ShufflePracticeSetting } from '@/core/utils'
 const Dialog = defineAsyncComponent(() => import('@/base/dialog/Dialog.vue'))
@@ -55,8 +56,11 @@ function getDefaultTotal(total: number) {
 }
 
 function setDefaultRange() {
-  startNo = progressNo > 0 ? 1 : wordCount > 0 ? 1 : 0
-  endNo = progressNo
+  // 「随机单词测试」默认在整本词典里抽（没学过一个词也能测）；
+  // 「随机复习」默认只在已学过的区间里抽。
+  const useWholeDict = props.wordPracticeMode === WordPracticeMode.ShuffleWordsTest
+  startNo = wordCount > 0 ? 1 : 0
+  endNo = useWholeDict ? wordCount : progressNo
   num = getDefaultTotal(rangeWordCount)
 }
 

@@ -40,3 +40,13 @@ report.html
 public/vscode
 apps/TypeWordsMiniApp
 *.tsbuildinfo
+
+# 词库体积大（425 MB），本地灌入，不进版本库
+# 例外：public/dicts/en/article/NCE_1.json 是仓库原有文件，继续跟踪
+public/dicts/**
+!public/dicts/en/article/
+!public/dicts/en/article/NCE_1.json
+
+# 本地体检器产物
+_tools/__pycache__/
+_tools/_shots/

@@ -1,0 +1,687 @@
+// 英语音标学习页样式
+// 变量全部来自 app/assets/css/main.scss 的主题变量，浅色/深色自动适配
+
+.phonetics-page {
+  color: var(--color-main-text);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-bottom: 3rem;
+}
+
+// ---------- 顶部介绍卡 ----------
+.hero-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  background: var(--color-second);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.hero-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  flex-shrink: 0;
+  border-radius: 1rem;
+  background: var(--color-select-bg);
+  color: var(--color-reverse-white);
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+}
+
+.hero-copy {
+  flex: 1;
+  min-width: 0;
+
+  h1 {
+    margin: 0;
+    font-size: 1.875rem;
+    font-weight: 700;
+    line-height: 2.25rem;
+  }
+
+  p {
+    margin: 0.5rem 0 0;
+    max-width: 37.5rem;
+    color: var(--color-font-2);
+    line-height: 1.5rem;
+  }
+}
+
+.hero-count {
+  text-align: center;
+  background: var(--bg-card-secend);
+  border-radius: 0.75rem;
+  min-width: 5.5rem;
+  padding: 0.75rem 1rem;
+
+  strong {
+    display: block;
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+
+  span {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--color-font-2);
+  }
+}
+
+// ---------- 工具条 ----------
+.toolbar-card {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--color-second);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.toolbar-label {
+  color: var(--color-font-2);
+  font-weight: 600;
+}
+
+.button-list {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: 1px solid var(--color-item-border);
+  border-radius: 0.5rem;
+  background: var(--bg-card-primary);
+  color: var(--color-main-text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.18s, border-color 0.18s, color 0.18s;
+
+  &:hover {
+    border-color: var(--color-select-bg);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--color-select-bg);
+    outline-offset: 2px;
+  }
+
+  &.active {
+    background: var(--color-select-bg);
+    border-color: var(--color-select-bg);
+    color: var(--color-reverse-white);
+  }
+
+  svg {
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+  }
+}
+
+.filter-count {
+  opacity: 0.7;
+  margin-left: 0.25rem;
+}
+
+.random-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+
+  .random-banner-text {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    color: var(--color-font-2);
+
+    > svg {
+      color: var(--color-select-bg);
+      flex-shrink: 0;
+      font-size: 1.25rem;
+      line-height: 1.75rem;
+    }
+  }
+}
+
+// ---------- 音标区 ----------
+.phonetics-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.phonetics-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.75rem;
+}
+
+.phoneme-section {
+  box-sizing: border-box;
+  background: var(--color-second);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  scroll-margin-top: 1rem;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  h2 {
+    margin: 0;
+    font-weight: 700;
+  }
+
+  p {
+    margin: 0.25rem 0 0;
+    color: var(--color-font-2);
+  }
+
+  > span {
+    flex-shrink: 0;
+    background: var(--bg-card-secend);
+    border-radius: 0.5rem;
+    padding: 0.25rem 0.75rem;
+  }
+}
+
+.phoneme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@media (width >= 640px) {
+  .phoneme-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (width >= 1024px) {
+  .phoneme-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (width >= 1280px) {
+  .phoneme-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.phoneme-card {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-item-border);
+  border-radius: 0.75rem;
+  background: var(--bg-card-primary);
+  transition: background-color 0.18s, border-color 0.18s;
+
+  &.active,
+  &:hover {
+    border-color: var(--color-select-bg);
+    background: var(--bg-card-secend);
+  }
+
+  &.error {
+    border-color: rgb(220 38 38);
+  }
+}
+
+.phoneme-play-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 6.5rem;
+  padding: 0.75rem;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.18s;
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--color-select-bg);
+    outline-offset: -3px;
+  }
+}
+
+.phoneme-symbol {
+  font-family: 'Segoe UI', 'Noto Sans', Arial, sans-serif;
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.detail-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  border: none;
+  border-top: 1px solid var(--color-item-border);
+  background: none;
+  color: var(--color-select-bg);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.18s;
+
+  &:hover {
+    background: var(--bg-card-secend);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--color-select-bg);
+    outline-offset: -3px;
+  }
+}
+
+// 紧凑模式
+.compact {
+  .phoneme-section {
+    padding: 0.75rem;
+  }
+
+  .section-heading {
+    align-items: center;
+    margin-bottom: 0.75rem;
+
+    p {
+      display: none;
+    }
+
+    h2 {
+      font-size: 1rem;
+      line-height: 1.5rem;
+    }
+  }
+
+  .phoneme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(5.25rem, 1fr));
+    gap: 0.5rem;
+  }
+
+  .phoneme-play-area {
+    gap: 0.25rem;
+    min-height: 3.75rem;
+    padding: 0 0.5rem;
+  }
+
+  .phoneme-symbol {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+
+  .detail-control {
+    min-height: 2.5rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+}
+
+// 宽松模式
+.standard {
+  .phoneme-play-area {
+    min-height: 6rem;
+    padding: 0.5rem;
+  }
+
+  .phoneme-symbol {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+}
+
+// ---------- 详情弹窗 ----------
+.phonetics-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phonetics-modal-mask {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 45%);
+}
+
+.phonetics-modal-body {
+  position: relative;
+  max-height: 88vh;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: var(--color-card-bg);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 25%);
+}
+
+.phonetics-modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--bg-card-secend);
+  color: var(--color-main-text);
+  font-family: inherit;
+  font-size: 1.125rem;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-select-bg);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--color-select-bg);
+    outline-offset: 2px;
+  }
+}
+
+.phoneme-detail {
+  width: min(92vw, 40rem);
+  max-height: 88vh;
+  padding: 0.5rem 1.25rem 1.25rem;
+  overflow-y: auto;
+  color: var(--color-main-text);
+}
+
+.detail-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: var(--bg-card-secend);
+}
+
+.detail-symbol {
+  min-width: 6.5rem;
+  text-align: center;
+  font-family: 'Segoe UI', 'Noto Sans', Arial, sans-serif;
+  font-size: 3.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.replay-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--color-select-bg);
+  color: var(--color-reverse-white);
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.9;
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--color-select-bg);
+    outline-offset: 2px;
+  }
+
+  &.error {
+    background: rgb(220 38 38);
+  }
+}
+
+.detail-section {
+  margin-top: 1rem;
+
+  h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.5rem;
+  }
+}
+
+.tip-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color-font-2);
+  line-height: 1.6rem;
+
+  li + li {
+    margin-top: 0.25rem;
+  }
+}
+
+.phoneme-video {
+  display: block;
+  width: 100%;
+  max-height: 25rem;
+  border-radius: 0.75rem;
+  background: #000;
+}
+
+.video-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 8rem;
+  padding: 1rem;
+  border: 1px solid var(--color-item-border);
+  border-radius: 0.75rem;
+  background: var(--bg-card-secend);
+  color: var(--color-font-2);
+
+  > svg {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+}
+
+.confusion-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--color-item-border);
+  border-radius: 0.75rem;
+  background: var(--bg-card-primary);
+
+  > svg {
+    flex-shrink: 0;
+    margin-top: 0.125rem;
+    color: var(--color-select-bg);
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+
+  p {
+    margin: 0;
+    color: var(--color-font-2);
+    line-height: 1.5rem;
+  }
+}
+
+.example-list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--color-item-border);
+  border-radius: 0.75rem;
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-item-border);
+  }
+
+  li:last-child {
+    border-bottom: none;
+  }
+}
+
+.example-word {
+  min-width: 6rem;
+  font-weight: 600;
+}
+
+.example-phonetic {
+  color: var(--color-font-2);
+  font-family: 'Segoe UI', 'Noto Sans', Arial, sans-serif;
+}
+
+.example-meaning {
+  margin-left: auto;
+  color: var(--color-font-2);
+}
+
+// ---------- 移动端 ----------
+@media (width <= 768px) {
+  .phonetics-page {
+    gap: 0.75rem;
+    padding-bottom: 2rem;
+  }
+
+  .hero-card {
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .hero-icon {
+    width: 3rem;
+    height: 3rem;
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+
+  .hero-copy {
+    h1 {
+      font-size: 1.5rem;
+      line-height: 2rem;
+    }
+  }
+
+  .hero-count {
+    display: none;
+  }
+
+  .toolbar-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .button-list {
+    display: grid;
+  }
+
+  .toolbar-group:first-child .button-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .mode-group .button-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .seg-btn {
+    width: 100%;
+    padding: 0 0.5rem;
+  }
+
+  .phoneme-grid,
+  .compact .phoneme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .phoneme-detail {
+    width: 90vw;
+    padding: 0.5rem 1rem 1rem;
+  }
+
+  .detail-hero {
+    flex-direction: column;
+  }
+
+  .detail-symbol {
+    min-width: 0;
+  }
+
+  .replay-control {
+    width: 100%;
+  }
+
+  .example-word {
+    min-width: 4.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-btn,
+  .phoneme-card,
+  .phoneme-play-area,
+  .detail-control,
+  .replay-control {
+    transition: none;
+  }
+
+  .phoneme-play-area:active {
+    transform: none;
+  }
+}
