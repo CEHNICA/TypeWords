@@ -13,7 +13,8 @@
 """
 import json, os, re, sys
 
-DIR = r"C:\Users\17321\Documents\破甲\typewords-src\public\dicts\en\article"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DIR = os.path.join(ROOT, "public", "dicts", "en", "article")
 BOOKS = ["LWXX_3_1", "LWXX_3_2", "LWXX_4_1", "LWXX_4_2", "LWXX_5_1", "LWXX_5_2",
          "LWCZ_6_1", "LWCZ_6_2", "LWCZ_7_1", "LWCZ_7_2", "LWCZ_8_1", "LWCZ_8_2", "LWCZ_9_1"]
 

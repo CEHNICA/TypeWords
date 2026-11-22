@@ -14,7 +14,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 2. **dev server 必须独立进程常驻**，不能挂在会话后台任务上（任务到时限进程被杀、端口失效）：
    ```powershell
    Start-Process -FilePath "$env:APPDATA\npm\pnpm.cmd" -ArgumentList 'run','dev' `
-     -WorkingDirectory 'C:\Users\17321\Documents\破甲\typewords-src' `
+     -WorkingDirectory '' `
      -WindowStyle Hidden -RedirectStandardOutput '_dev.log' -RedirectStandardError '_dev.err.log'
    ```
 3. **`$ref` / `$computed` 在 script 里不能写 `.value`** —— `@vue-macros/nuxt` 的 reactivity
@@ -114,7 +114,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 
 ## 莱芜课本课文（2026-11-21 新增）
 
-PDF 源：`C:\Users\17321\WPSDrive\403466883\WPS云盘\莱芜英语课本\压缩版\*.pdf`（13 册：
+PDF 源：`C:\Users\<user>\WPSDrive\<账号id>\WPS云盘\莱芜英语课本\压缩版\*.pdf`（13 册：
 小学三上~五下 6 册 + 初中六上~九上 7 册）。**山东版（莱芜五四制）**，八下整册课文客观少（11 篇）。
 
 产物（**都不改任何前端代码**，书单页 `book-list.vue` 直接读 `public/list/article.json`）：
@@ -189,7 +189,7 @@ $env:TTB_REJECT_ELLIPSIS='1'; $env:TTB_REJECT_LOWER='1'; $env:TTB_MIN_WORDS='4'
 修法走**数据层**（改 article json，**不动前端代码**）。
 
 ```powershell
-cd C:\Users\17321\Documents\破甲\typewords-src
+cd 
 node scripts\split-article-sentences.js                            # 切句
 py -3 scripts\translate_via_llm.py --batch 40 --model MiniMax-M2.7-highspeed --apply   # 翻译
 py -3 scripts\fix_article_units.py --pages LWCZ_6_1,...,LWCZ_9_1 --apply              # unit 前缀
@@ -237,7 +237,7 @@ python _tools\fix_title_translate_unit.py --apply                  # 中文译�
 用户「再看看有什么问题」深挖到词库脏数据层，**全部在数据层修，没动前端**。
 
 ```powershell
-cd C:\Users\17321\Documents\破甲\typewords-src
+cd 
 python _tools\dedupe_dict_trans.py --apply      # 去重释义 9664 条
 py -3 scripts\fill_missing_dict_translations.py --all --apply   # 补释义 1188 → 5
 python _tools\fix_dict_relwords.py --apply       # 清空错配 relWords 16838 条
@@ -495,7 +495,7 @@ v9 的对拍结论：
 ## 体检器（改测试链路必跑）
 
 ```powershell
-cd C:\Users\17321\Documents\破甲\typewords-src
+cd 
 python _tools\check_test_flow.py --http     # 17 项，全绿 exit 0
 python _tools\check_placement.py --http    # 72 项，全绿 exit 0
 python _tools\check_book_review.py --http  # 38 项，全绿 exit 0

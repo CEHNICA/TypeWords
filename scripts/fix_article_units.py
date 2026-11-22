@@ -44,7 +44,9 @@ import json
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PDF_DIR = r"C:\Users\17321\WPSDrive\403466883\WPS云盘\莱芜英语课本\压缩版"
+# 课本 PDF 所在目录（本机私有路径不入库）：用环境变量 TW_TEXTBOOK_PDF_DIR 指定
+PDF_DIR = os.environ.get(
+    'TW_TEXTBOOK_PDF_DIR') or os.path.join(ROOT, '课本PDF')
 ART_DIR = os.path.join(ROOT, "public", "dicts", "en", "article")
 
 BOOKS = [

@@ -35,7 +35,8 @@ sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import _textbook_wordsheet as tw
 from json_io import dump_like, load_preserve
 
-BACKUP = r'C:\Users\17321\Documents\破甲\_dict_backup_20261122c'
+BACKUP = os.environ.get('TW_DICT_BACKUP') or os.path.join(
+    os.path.dirname(ROOT), '_dict_backup_20261122c')
 
 
 def build_universe():

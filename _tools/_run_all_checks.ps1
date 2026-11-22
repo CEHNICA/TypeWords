@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Continue'
-$p = 'C:\Users\17321\Documents\破甲\typewords-src'
+# 项目根目录 = 本脚本所在 _tools 的上一级（不写死本机绝对路径）
+$p = Split-Path -Parent $PSScriptRoot
 $py = @(
   @('check_article_quality.py', ''),
   @('check_title_unit.py', ''),
