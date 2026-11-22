@@ -7,7 +7,7 @@
 重点是「六年级到九年级」的单词课本册能不能被一眼看到。
 
 背景（2026-11-21 实测）：
-  * 词库数据本身是全的 —— 207 册，一册不缺。
+  * 词库数据本身是全的 —— 217 册，一册不缺（2026-11-22 补入 10 册线上词书）。
   * 但 `/dict-list` 的分组组件 `DictGroup.vue` 默认只显示第一个 tag 页签
     （`currentTag = tagList[0]`），于是「青少年英语」分类默认停在「通用」，
     只露 4 本高考/中考词，六到九年级的 PEP/外研/冀教课本册全藏在别的页签后面。
@@ -179,7 +179,7 @@ def main():
     by_cat = {}
     for b in data:
         by_cat.setdefault(b.get('category'), []).append(b)
-    c.check(len(data) == 207, '词库总册数 = 207', '实际 %d' % len(data))
+    c.check(len(data) == 217, '词库总册数 = 217', '实际 %d' % len(data))
     c.check(len(by_cat.get(CAT_YOUNG, [])) == 106, '青少年英语分类 106 册',
             '实际 %d' % len(by_cat.get(CAT_YOUNG, [])))
     c.check(len(by_cat.get(CAT_LAIWU, [])) == 13, '莱芜课本分类 13 册',
@@ -195,8 +195,8 @@ def main():
             missing.append('%s(%s)' % (b.get('name'), fname))
         elif os.path.getsize(p) == 0:
             empty.append('%s(%s)' % (b.get('name'), fname))
-    c.check(not missing, '207 册词库文件全部存在', '缺: %s' % ', '.join(missing[:8]))
-    c.check(not empty, '207 册词库文件全部非空', '空: %s' % ', '.join(empty[:8]))
+    c.check(not missing, '217 册词库文件全部存在', '缺: %s' % ', '.join(missing[:8]))
+    c.check(not empty, '217 册词库文件全部非空', '空: %s' % ', '.join(empty[:8]))
 
     # ---------- 2. 青少年英语：六~九年级课本册 ----------
     young = by_cat.get(CAT_YOUNG, [])

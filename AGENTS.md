@@ -764,3 +764,58 @@ BaseButton 渲染成 `div.base-button` 不是 `<button>`。
 pinia 取法写错过（`Symbol.for` → 恒 null）、IndexedDB 读路径写错过（少了 `.val`）、
 合并用例的期望值写错过（喂了整份重复的 CSV，按语义应该是「1 重复 + 1 新增」）。
 **判据写歪比数据缺陷更误导人 —— 改完尺子必须连跑 ≥3 次 + 退回验证（故意塞坏样本看它红在正确的那条）。**
+
+## 线上词库补充（2026-11-22）
+
+旧账②：把线上词库补到本地，**只拉有用的 10 册**。已完成。
+
+### 线上资源到底在哪（踩过坑）
+
+- **词库文件不在 typewords.cc 同域**：https://typewords.cc/dicts/en/word/x.json 返回的是 SPA fallback 的 text/html。
+- 真相在 dev 分支的 pp/core/config/env.ts：RESOURCE_URL = 'https://files.typewords.cc/'
+  - 清单（**只是默认展示列表，不全**）：https://files.typewords.cc/list/word.json → 194 条
+  - 完整清单（**schema 不同**：id 是英文短名如 ieltsWang3）：https://typewords.cc/list/word.json → 241 条
+  - 词库文件真实路径：https://files.typewords.cc/dicts/en/word/<url>（files 清单没列的文件也能下）
+- 两份清单对完的结论：**files 域那 194 册本地全有**（本地 207 = files 194 + 莱芜 13 册）。
+  241 份里本地独有 47 个 url，其中 37 册是「雅思听力 dayN」噪音（每册 22~78 词），判为不拉。
+
+### 拉进来的 10 册（public/dicts/en/word/，清单 id 266..275）
+
+| id | enName | 显示名 | 词数 |
+|----|--------|--------|------|
+| 266 | ieltsWang3 | 雅思wang C3 | 1134 |
+| 267 | ieltsWang4 | 雅思wang C4 | 346 |
+| 268 | ieltsWang5 | 雅思wang C5 | 1566 |
+| 269 | ieltsWang11 | 雅思wang C11 | 1611 |
+| 270 | ielts-real-1 | 雅思 real 词汇 1 | 736 |
+| 271 | ielts-real-2 | 雅思 real 词汇 2 | 402 |
+| 272 | ielts-real-3 | 雅思 real 词汇 3 | 256 |
+| 273 | ielts-real-4 | 雅思 real 词汇 4 | 201 |
+| 274 | ielts-real-5 | 雅思 real 词汇 5 | 183 |
+| 275 | frequently_used_words03_level3 | 超高频单词level 3 | 1435 |
+
+注意 enName 冲突：本地已有 requently_used_words03 = 超高频单词level 2（url requently_used_word02.json），
+线上 level 3 用 requently_used_words03_level3 避开。
+
+### 铁律
+
+1. **清单只能按条目合并，绝不整份覆盖。** 本地有莱芜 13 册线上没有；两边 id 空间不同（本地 1..275，线上主站是英文短名）。
+2. **清单格式 = 2 空格缩进 + 末尾换行**（check_dict_list.py 逐字节校验，写歪就红）。
+3. **本地词库比线上原始数据新**（本地清过 relWords 重复、trans 重复）→ **拉新册可以，覆盖旧册就是倒退**。
+4. **线上原始数据的 relWords 会整组挂错词头**（实证：IELTS_WANG_3 第 0 条 bility 挂着 ackground 的词族，
+   第 2 条 ccountant 挂着 charge；重新下载线上原件一模一样 → 上游自己的锅，不是我们拉的锅）。
+   判据沿用 ix_dict_relwords.py（词族与词头公共前缀 < 2 字符 → 判错配），清空成 {root:'', rels:[]}。
+   import_online_dicts.py 已内置这一步（统计项 D6）。
+5. **补不上的中文释义直接删词条，不编造释义**（本地 207 册 D1=0 是标准）。
+   data/cedict.txt.gz **不是**中英词典（是「中文词条→英文释义」的混合词典），**补不了中文释义**，别拿它补。
+6. **加完词必须重建查词索引**：
+ode scripts/build-word-index.mjs → 
+ode scripts/augment-word-index.mjs
+   （本次 33376 → 67132 词）。
+7. **词库数据被 gitignore**，commit 只含 public/list/word.json + _tools/import_online_dicts.py；
+   写盘前后都要有 repo 外备份（%TEMP%）。
+
+### 工具
+
+_tools/import_online_dicts.py：下载 → 清洗 → 落地 → 按条目合并清单；--dry-run 只报告。
+清洗口径与 check_dict_data.py 一致：D2 同 (词性,中文) 去重 / D3 同中文缺词性删 / D4 控制字符 / D6 错位 relWords 清空 / 无释义用 data/word-index.json 补，补不上的删。
