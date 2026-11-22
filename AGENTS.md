@@ -306,6 +306,75 @@ open(path, "wb").write(dump_like(raw, arr))
 → 日后从镜像版重灌词库，**本轮所有清洗结果都会丢**。
 重灌后跑 `python _tools\check_dict_data.py` + `check_dict_family.py` 会立刻报红。
 
+## 课本释义写回：复习页的中文要和课本一致（2026-11-22 新增）
+
+用户原话：「复习一本书的时候，英语后面紧跟着的中文和课本上的不一样」。
+
+**根因在数据层，不在前端**：复习页显示的中文 = 词条 `trans[0].cn`，
+那是**通用词典**的首释义；而课本（莱芜 13 册 PDF）有自己的一套中文。
+前端 `shortTrans()`（`app/pages/(words)/book-review.vue:130`）只做「取第一段 + 超 14 字截断」，
+它不查课本 → 显示的自然是词典口径。
+
+**修法（只动数据层，不改前端）**：
+
+1. `scripts/extract-textbook-wordlists.py` 从 13 册课本 PDF 抽 word→课本中文，
+   产物 `data/textbook-wordlists.json`（外层 key = 册 id，内层 key = **词库原样词头，区分大小写**）。
+2. `_tools/check_textbook_trans.py --apply` 把课本释义写进该册词条的 `trans[0].cn`
+   （保留原 `pos`；原通用释义追加到 `trans` 末尾，信息不丢）。
+3. 写回后**必须重建查词索引**：
+   `node scripts\build-word-index.mjs` → `node scripts\augment-word-index.mjs`。
+
+结果：13 册「释义不一致」全部归零（词库 4533 词 / 命中 4377 / 不一致 0），
+浏览器实测 41 对样本全一致。
+
+**各册课本释义互相独立**（`centre` 六上「中心；中央」≠ 七上），复习哪本就显示哪本口径
+—— **不要跨册合并**，也不要把某一册的口径推广到别的册。
+
+### 抽课本 PDF 的坑
+
+1. **两种版式**：小学（`LWXX_*`）逐行；初中（`LWCZ_*`）以 `p.N` 行分块、条目可跨行。
+2. **PDF 两栏会丢英文**（`cloudy` 只剩 `l`、`d`）→ 单词必须有结构信号
+   （`p.N` 收尾 / 词性标记 / 在该册词库白名单里）。
+3. **四层噪声控制**：结构层（`p.N` 分块、词性标记当粘连信号切断）、
+   内容层（纯 ASCII 字母 / 词性标记 / `单元词语表` / `注：` / `。` / `例如` / `意为` → 丢弃）、
+   章节层（正文撞词优先级最低）、白名单层（只留该册词库词头）。
+4. **多来源候选取最优**：同词多个候选 → 先按权威层级
+   （总词表 tier0 > A—Z tier1 > 每单元词表 tier2 > 兜底 tier9），同级取最长。
+5. **章节标题行必须独占一行且不含数字**（否则把目录行当章节）。
+6. **大小写敏感**：`WHO`/`who`、`US`/`us`、`Brown`/`brown` 是不同词条；
+   大小写不一致 → **歧义跳过，宁可不写**（撇号形态差异不算歧义）。
+7. **音标夹在词中间**要还原词头：`Angel /ˈeɪndʒl/ Falls 安赫尔瀑布` → `Angel Falls`。
+8. **残缺候选丢弃**（`cn_is_bad`）：括号不闭合 → 丢；
+   末尾括号是「纯中文 1~2 字且不含『的』」而它前面（括号外深度 0）无中文 → 丢
+   （如 `（shoot的过去式）（篮）` 丢了『投』字）。
+9. **语法讲解框的整句**（含 `。`/`例如`/`意为`）→ 丢。
+10. **PDF 会混进定位控制字符**：`LWCZ_6_1` 有 33 条释义被 `\x08`（退格符）粘在末尾
+    （`泰山\x08`）→ 写回后被 `check_dict_data.py` 的 CTRL 项判脏。
+    清洗函数 `sanitize_cn()` 在**提取脚本**和**对账脚本**里各一份，必须口径一致，
+    否则对账会把这 33 条报成永久不一致。
+
+### 写回与对账的规矩
+
+- **写回前必须备份词库**（词库被 gitignore，改错无法回滚）→ 备份到 repo 外目录。
+- **对账口径必须复刻前端的 `shortTrans`**（取第一段 + 14 字截断），否则「不一致」全是假阳性。
+- 写回后跑 `_tools/_check_dict_format.py` 确认 BOM / CRLF / compact / 末尾换行 /
+  条数 / **词头顺序**都没被破坏（写回必须用 `scripts/json_io.py` 的 `dump_like`）。
+- 词库改动**不进 git**（`.gitignore` 排除 `public/dicts/**`）→ 重灌词库会丢全部写回结果。
+
+### 浏览器实测尺子的坑
+
+`node _tools\_check_book_review_trans.js`（改复习页 / 词库释义必跑）：
+
+- **BaseButton 渲染的是 `div.base-button`，不是 `<button>`** → 定位用 `.base-button:has-text(...)`。
+- **复习页默认全选 13 册** → 直接点 chip 是「取消」，而且干扰项会来自别的册
+  （课本口径不一致，断言必然红）。必须先点「取消全选」，再只勾目标册。
+- **等词库清单加载完再点 chip**（等 `已选 13 册 · 约 N 个词` 且 N > 0），
+  否则点击落在还没初始化的列表上，「开始复习」按钮还是灰的，点了没反应。
+- **一行「英文 + 中文」在 `.detail-row`**（`.detail-en` / `.detail-cn`），提交答案后才渲染；
+  生词表里 `.option` 的 span 顺序完全不同（英文/中文/册名），别混。
+- 退回验证：`_tools/_revert_check_book_review.py break|restore`
+  （故意改坏一个词的释义 → 尺子必须红在「页面中文全部等于课本口径」那一条）。
+
 ## 六~九年级课本词表可见性（2026-11-21 新增）
 
 用户反馈「六年级到九年级的单词好像还没弄上」。**查完发现：词库数据一册不缺**
@@ -357,7 +426,10 @@ python _tools\check_title_unit.py            # 英文 Unit 号 vs 中文「第N�
 python _tools\check_dict_data.py             # 词库 5 类脏数据（D1~D5），全 0
 python _tools\check_dict_family.py           # relWords 归属错误 0 条
 python _tools\check_dict_glue.py             # 粘连词，全库 207 册 0 真粘连
+python _tools\check_textbook_trans.py       # 课本释义对账（13 册「释义不一致」= 0）
+python _tools\_check_dict_format.py         # 词库格式（对照备份：BOM/CRLF/compact/条数/词头顺序）
 node   _tools\_check_read_aloud.js           # 朗读「一句一句」浏览器实测 7 项
+node   _tools\_check_book_review_trans.js   # 复习页课本释义浏览器实测（41 对样本全一致）
 ```
 
 `node _tools\_check_lookup_ui.js` 走 Playwright 实测点词（查词链路每次改动必跑），
