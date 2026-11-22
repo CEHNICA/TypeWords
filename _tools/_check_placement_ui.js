@@ -14,7 +14,7 @@
  *     其余题**全部答对** → 造出「答对」样本。两条断言都不用赌随机。
  *   - 英文单词从提交后追加的 `.bg-third` 芯片 span 里取，不解析拼接文本。
  */
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 
 const BASE = process.env.TW_BASE_URL || 'http://localhost:5567'
 // 英文单词里可能带 ASCII 撇号、弯撇号（U+2019）、连字符和空格

@@ -6,10 +6,11 @@
  * Vue 的 visible 状态和 DOM 脱节，下一次点击就不冒泡了。
  */
 const fs = require('fs')
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 
 const BASE = 'http://localhost:5567'
-const OUT = 'C:/Users/17321/Documents/破甲/typewords-src/_shots'
+const path = require('path')
+const OUT = path.join(__dirname, '..', '_shots')
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true })

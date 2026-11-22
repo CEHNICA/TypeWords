@@ -1,5 +1,5 @@
 // 找出到底谁遮住了正文：列出所有 fixed/sticky 元素 + 与正文矩形的重叠
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 const path = require('path')
 const BASE = 'http://localhost:5567'
 const SHOTS = path.join(__dirname, '..', '_shots')

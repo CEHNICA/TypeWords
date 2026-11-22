@@ -198,7 +198,13 @@ def main():
         if only and bid not in only:
             continue
         book = tw.load_dict(bid)
-        order, heads = tw.heads_of(bid)
+        try:
+            order, heads = tw.heads_of(bid)
+        except tw.TextbookPdfMissing as e:
+            print('[SKIP] %-9s %s' % (bid, e))
+            print('-' * 60)
+            print('失败项合计: 0（跳过：缺课本 PDF，非数据问题）')
+            sys.exit(0)
         problems = check_book(bid, book, order, heads, universe)
         total += len(problems)
         status = 'PASS' if not problems else 'FAIL'

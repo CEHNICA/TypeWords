@@ -35,8 +35,10 @@ sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import _textbook_wordsheet as tw
 from json_io import dump_like, load_preserve
 
-BACKUP = os.environ.get('TW_DICT_BACKUP') or os.path.join(
-    os.path.dirname(ROOT), '_dict_backup_20261122c')
+#   env TW_DICT_BACKUP → data/local_paths.json → <repo>/../_dict_backup_20261122c
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+from local_paths import resolve_dict_backup  # noqa: E402
+BACKUP = resolve_dict_backup('_dict_backup_20261122c')
 
 
 def build_universe():

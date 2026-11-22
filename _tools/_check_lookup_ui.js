@@ -12,7 +12,7 @@
  *      —— 发音音频(dictvoice)不算，它不阻塞释义渲染，单独断言
  *   6. 端到端响应 < 500ms（本地词典必须是毫秒级）
  */
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 
 const BASE = 'http://localhost:5567'
 let failed = 0

@@ -114,8 +114,10 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 
 ## 莱芜课本课文（2026-11-21 新增）
 
-PDF 源：`C:\Users\<user>\WPSDrive\<账号id>\WPS云盘\莱芜英语课本\压缩版\*.pdf`（13 册：
-小学三上~五下 6 册 + 初中六上~九上 7 册）。**山东版（莱芜五四制）**，八下整册课文客观少（11 篇）。
+PDF 源：莱芜五四制课本 PDF 13 册（小学三上~五下 6 册 + 初中六上~九上 7 册），
+放在仓库外（体积大 + 本机私有目录）。**路径解析见 `scripts/local_paths.py`**：
+`env TW_TEXTBOOK_PDF_DIR` → `data/local_paths.json`（本机配置，已 gitignore）→ `<repo>/课本PDF`。
+**山东版（莱芜五四制）**，八下整册课文客观少（11 篇）。
 
 产物（**都不改任何前端代码**，书单页 `book-list.vue` 直接读 `public/list/article.json`）：
 
@@ -176,7 +178,7 @@ $env:TTB_REJECT_ELLIPSIS='1'; $env:TTB_REJECT_LOWER='1'; $env:TTB_MIN_WORDS='4'
 
 - `public/dicts/en/article/LWXX_3_1.json` = **数组**，每篇
   `{id, title, titleTranslate, text, textTranslate, audioSrc, lrcPosition, question, nameList, quote, userId}`，篇内 id 从 10000 起。
-- **一句一段**：段落用 `\n\n` 分隔（上游 `genArticleSectionData` 靠这个断句；写成 `\n` → 译文错位）。
+- **一句一段**：段落用 `\n\n` 分隔（上游 `genArticleSectionData` 靠这个断句；写成 `\\n` → 译文错位）。
 - 跟打页路由 `/practice-articles/{bookId}`，**bookId 是书 id**，篇内定位靠数组下标。
 - 标题格式：`Unit N · Lesson N 课名`（小学）/ 纯话题标题（初中）。
 
@@ -206,7 +208,7 @@ python _tools\fix_title_translate_unit.py --apply                  # 中文译�
 2. **切句会清空该文章的 `textTranslate`** → 改完课文**必须重跑翻译**，否则译文没了。
 3. **翻译必须逐句串行 + 句间 120ms 间隔**（见硬规矩 17）；走 MiniMax API，
    上游 `translate.ts` 的百度翻译需要 appid/key，本地没有 → 前端译文只能走**预置数据 `textTranslate`**。
-4. **译文回填格式**：段用 `\n\n`、句用 `\n`，与 `genArticleSectionData` 的切分**完全对齐**。
+4. **译文回填格式**：段用 `\n\n`、句用 `\\n`，与 `genArticleSectionData` 的切分**完全对齐**。
 5. **翻译缓存**在 `data/article-translations-llm.json`（6698 条），重跑不会重复花钱。
 6. **unit 前缀只修「前缀错」，不补「缺前缀」** —— 缺前缀 = 课本正文本来就没写 Unit 标记，
    补上去是**编造课本没有的信息**。
@@ -567,7 +569,7 @@ node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
 14. **read / grep 工具显示会丢字符**：`emitter.off(EventKey.onTyping, onTyping)` 会被显示成少了
     `, onTyping` —— 拿它当 edit 的 old_string 必然匹配失败。改 `TypingArticle.vue` 这类 **CRLF** 文件时，
     用 bash 的 `[System.IO.File]::ReadAllText` 取真实字节再替换（顺手把行尾统一回 CRLF）。
-    上游 NCE 数据就是这结构；写成 `\n` 分句 → 跟打页译文跟英文错位。
+    上游 NCE 数据就是这结构；写成 `\\n` 分句 → 跟打页译文跟英文错位。
 13. **i18n 语言包是 Tab 缩进**：`json.dumps(indent=2)` 重写会造成上千行 diff。
     加 key 要用**文本插入**（`head + ',\n\t"key": "value"\n' + tail`）再 `json.load()` 校验。
 14. **本项目 `BaseButton` 渲染出来是 `<span>`，不是 `<button>`**：浏览器自动化里
@@ -772,7 +774,7 @@ pinia 取法写错过（`Symbol.for` → 恒 null）、IndexedDB 读路径写错
 ### 线上资源到底在哪（踩过坑）
 
 - **词库文件不在 typewords.cc 同域**：https://typewords.cc/dicts/en/word/x.json 返回的是 SPA fallback 的 text/html。
-- 真相在 dev 分支的 pp/core/config/env.ts：RESOURCE_URL = 'https://files.typewords.cc/'
+- 真相在 dev 分支的 app/core/config/env.ts：RESOURCE_URL = 'https://files.typewords.cc/'
   - 清单（**只是默认展示列表，不全**）：https://files.typewords.cc/list/word.json → 194 条
   - 完整清单（**schema 不同**：id 是英文短名如 ieltsWang3）：https://typewords.cc/list/word.json → 241 条
   - 词库文件真实路径：https://files.typewords.cc/dicts/en/word/<url>（files 清单没列的文件也能下）
@@ -794,23 +796,23 @@ pinia 取法写错过（`Symbol.for` → 恒 null）、IndexedDB 读路径写错
 | 274 | ielts-real-5 | 雅思 real 词汇 5 | 183 |
 | 275 | frequently_used_words03_level3 | 超高频单词level 3 | 1435 |
 
-注意 enName 冲突：本地已有 requently_used_words03 = 超高频单词level 2（url requently_used_word02.json），
-线上 level 3 用 requently_used_words03_level3 避开。
+注意 enName 冲突：本地已有 frequently_used_words03 = 超高频单词level 2（url frequently_used_word02.json），
+线上 level 3 用 frequently_used_words03_level3 避开。
 
 ### 铁律
 
 1. **清单只能按条目合并，绝不整份覆盖。** 本地有莱芜 13 册线上没有；两边 id 空间不同（本地 1..275，线上主站是英文短名）。
 2. **清单格式 = 2 空格缩进 + 末尾换行**（check_dict_list.py 逐字节校验，写歪就红）。
 3. **本地词库比线上原始数据新**（本地清过 relWords 重复、trans 重复）→ **拉新册可以，覆盖旧册就是倒退**。
-4. **线上原始数据的 relWords 会整组挂错词头**（实证：IELTS_WANG_3 第 0 条 bility 挂着 ackground 的词族，
-   第 2 条 ccountant 挂着 charge；重新下载线上原件一模一样 → 上游自己的锅，不是我们拉的锅）。
-   判据沿用 ix_dict_relwords.py（词族与词头公共前缀 < 2 字符 → 判错配），清空成 {root:'', rels:[]}。
+4. **线上原始数据的 relWords 会整组挂错词头**（实证：IELTS_WANG_3 第 0 条 ability 挂着 background 的词族，
+   第 2 条 accountant 挂着 charge；重新下载线上原件一模一样 → 上游自己的锅，不是我们拉的锅）。
+   判据沿用 fix_dict_relwords.py（词族与词头公共前缀 < 2 字符 → 判错配），清空成 {root:'', rels:[]}。
    import_online_dicts.py 已内置这一步（统计项 D6）。
 5. **补不上的中文释义直接删词条，不编造释义**（本地 207 册 D1=0 是标准）。
    data/cedict.txt.gz **不是**中英词典（是「中文词条→英文释义」的混合词典），**补不了中文释义**，别拿它补。
 6. **加完词必须重建查词索引**：
-ode scripts/build-word-index.mjs → 
-ode scripts/augment-word-index.mjs
+node scripts/build-word-index.mjs → 
+node scripts/augment-word-index.mjs
    （本次 33376 → 67132 词）。
 7. **词库数据被 gitignore**，commit 只含 public/list/word.json + _tools/import_online_dicts.py；
    写盘前后都要有 repo 外备份（%TEMP%）。
@@ -819,3 +821,67 @@ ode scripts/augment-word-index.mjs
 
 _tools/import_online_dicts.py：下载 → 清洗 → 落地 → 按条目合并清单；--dry-run 只报告。
 清洗口径与 check_dict_data.py 一致：D2 同 (词性,中文) 去重 / D3 同中文缺词性删 / D4 控制字符 / D6 错位 relWords 清空 / 无释义用 data/word-index.json 补，补不上的删。
+
+## 推公开 fork 前后的整改（2026-11-22）
+
+推到 `CEHNICA/TypeWords`（public，fork of zyronon/TypeWords）前的审计 + 整改。
+
+### 密钥审计
+
+扫全历史 24 个 commit 的 `git log -p`，命中 0 个真密钥
+（AKIA / gh[pousr]_ / xox[baprs]- / sk- / AIza / 私钥块 / JWT / Bearer 头 / 带凭据 URL）。
+**唯一的 `40 位十六进制串` 命中全是 commit SHA —— 那是误报，别当密钥报。**
+
+### 真正要脱敏的是「本机身份信息」
+
+密钥扫描查不出来的两类：
+
+1. **本机绝对路径**（10 个文件）→ 含 WPS 云盘账号 ID。
+   - `AGENTS.md` / `scripts/*.py` / `_tools/*.py` / `_tools/*.js` 里的 `C:\Users\<用户名>\...`
+   - 改法：Python 用 `os.path.dirname(os.path.dirname(os.path.abspath(__file__)))` 推导；
+     PowerShell 用 `$PSScriptRoot`；**仓库外资源**（课本 PDF、备份目录）改走环境变量。
+2. **全局 playwright 路径**（21 处 `require('C:/Users/<用户名>/AppData/Roaming/npm/node_modules/playwright')`）
+   → 收口到 `_tools/_playwright.js`（env `PLAYWRIGHT_MODULE` → 本地 node_modules → 全局 npm root → 裸 require）。
+
+### 仓库外资源的三层路径解析
+
+`scripts/local_paths.py`：`env TW_TEXTBOOK_PDF_DIR / TW_DICT_BACKUP`
+→ `data/local_paths.json`（本机配置，`/data/` 已被 gitignore）→ `<repo>/课本PDF` 兜底。
+
+**脱敏时最容易踩的坑**：把「硬编码绝对路径」换成「相对路径兜底」**不等价**——
+原路径指向的是仓库外的资源，换成 `<repo>/x` 后资源就不存在了，依赖它的尺子会崩或**静默退回旧口径**。
+本轮实证：`check_book_wordsheet.py` 直接崩；`check_textbook_trans.py` 不崩但退回 v1 旧缓存 →
+命中 4414→4377、释义不一致 0→**60**（假红，比崩更难查）。
+
+### 修掉的 4 个真缺陷（都是脱敏牵出来的）
+
+| 缺陷 | 症状 | 根因 |
+|------|------|------|
+| 尺子读 v1 旧词表 | `_check_book_review_trans.js` 报 4~5 条「页面中文 ≠ 课本口径」 | JS 尺子读 `data/textbook-wordlists.json`（v1 保留 '（am、is、are）是' 前置注释），页面显示的是 v2（已剥注释）。**两套口径对账 → 假红**。改成读 v2 快照（由 `check_textbook_trans.py` 实时抽取并落盘 `data/textbook-wordlists-v2.json`） |
+| 尺子等 hydrate 用固定 sleep | `_check_placement_ladders.js` 4 次连跑红 3 次 | dev server 首屏现编译，Vue 还没 hydrate 时点击**事件根本没绑上** → 点了没反应 → 加载的仍是默认阶梯（莱芜）→ '没看到请求' 假红。实测 900ms 必红、1200ms 偶发红、1500ms 才稳。改成等 `useNuxtApp().isHydrating === false`（见 `_tools/_wait_ready.js`） |
+| 文档被控制字符吃掉行首 | AGENTS.md 里出现 `o…de scripts/...`、`…requently_used_words03` | 写补丁脚本时用了 PowerShell here-string，脚本正文里的 `\\n` `\\a` `\\b` `\\f` 被 **Python 解释成控制字符**（换行/BEL/BS/FF）→ 紧跟其后的字符被吃掉。**肉眼完全看不出来** |
+| onMounted 抢跑 | 「点前 primary」在不同用例里五花八门 | `onMounted` 会把选中态拉回默认阶梯（`ladderKey.value = LADDERS[0].key`），点之前没等它跑完，后面全乱 |
+
+### 两个新尺子
+
+| 尺子 | 抓什么 |
+|------|--------|
+| `_tools/check_ctrl_chars.py` | 被跟踪文本文件里的 C0 控制字符（排除 `public/libs/` 第三方压缩库，那里本来就有） |
+| `_tools/check_doc_intact.py` | 「掉首字母」的残缺形态（`o…de` / `…p/` / `…requently_used` / `…ix_dict`）—— 控制字符查不出来，因为字符是真没了 |
+
+**写补丁脚本的硬规矩**：正文里出现 `app` / `node` / `background` / `fix_dict` 这类普通英文单词时，
+**用 raw string 或双反斜杠**，别让 Python 解释 `\\a` `\\b` `\\f` `\\n`。
+改完 AGENTS.md / README.md 必须跑上面两个尺子。
+
+### README 适配 fork
+
+- 顶部加 fork 声明（上游 zyronon，GPL-3.0，本地增强点列清）
+- clone 地址改成 `CEHNICA/TypeWords`
+- 新增「Vocabulary Data」一节：明说 `public/dicts/**` 被 gitignore、**clone 下来是空壳**、
+  哪些文件被跟踪、怎么补词（`files.typewords.cc`）、索引怎么重建
+- 新增「Local-only paths」一节：三层路径解析怎么配
+
+### 推完之后
+
+- `origin` = CEHNICA/TypeWords（自己的），`upstream` = zyronon/TypeWords（原作者，只用来 pull）
+- 远端无 CI workflow（仓库里没有 `.github/workflows`），推完不自动跑测试

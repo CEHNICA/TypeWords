@@ -25,7 +25,7 @@
  *   - **合并用例**：合并前词典里已有 apple/banana，如果再喂同一份 CSV 就是「两个都重复」，
  *     期望值必须按实际语义写（1 重复 + 1 新增 → 跳过 1、新增 1、总数 3）。
  */
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')

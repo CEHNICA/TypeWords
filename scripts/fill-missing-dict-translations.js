@@ -129,7 +129,7 @@ async function main() {
 
   if (probe) {
     await page?.close?.()
-    const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+    const { chromium } = require('../_tools/_playwright')
     const b = await chromium.launch({ headless: true })
     page = await (await b.newContext()).newPage()
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 30000 })
@@ -154,7 +154,7 @@ async function main() {
   }
   console.log('待翻译唯一词', uniq.length)
 
-  const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+  const { chromium } = require('../_tools/_playwright')
   const b = await chromium.launch({ headless: true })
   page = await (await b.newContext()).newPage()
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 30000 })

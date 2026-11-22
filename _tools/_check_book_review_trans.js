@@ -13,13 +13,16 @@
  * 数据层由 _tools/check_textbook_trans.py 对账归零，这里再验一遍
  * 「页面确实显示的是它」，避免「数据对了但页面根本没读这份数据」的假绿。
  */
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 const fs = require('fs')
 const path = require('path')
 
 const BASE = process.env.TW_BASE_URL || 'http://localhost:5567'
 const ROOT = path.resolve(__dirname, '..')
-const WL_FILE = path.join(ROOT, 'data', 'textbook-wordlists.json')
+// **v2 口径**（实时从 PDF 抽）的词表快照 —— 必须和 check_textbook_trans.py 同源。
+// 以前这里读的是 v1 旧缓存（保留 '（am、is、are）是' 这种前置括号注释），
+// 而页面显示的是 v2 值（已剥掉注释）→ 4~5 条「页面中文 ≠ 课本口径」的假红。
+const WL_FILE = path.join(ROOT, 'data', 'textbook-wordlists-v2.json')
 
 /** 莱芜 13 册 = ladder 'lw' 的 steps 顺序（app/core/data/placement.ts） */
 const CHIP_BIDS = ['LWXX_3_1', 'LWXX_3_2', 'LWXX_4_1', 'LWXX_4_2', 'LWXX_5_1', 'LWXX_5_2',
@@ -46,7 +49,8 @@ function short(cn) {
 
 async function main() {
   if (!fs.existsSync(WL_FILE)) {
-    console.log('[FAIL] 缺课本词表缓存 data/textbook-wordlists.json')
+    console.log('[FAIL] 缺课本词表快照 data/textbook-wordlists-v2.json')
+    console.log('       先跑 python _tools/check_textbook_trans.py（它会实时抽 PDF 并落盘）')
     process.exit(1)
   }
   const allWl = JSON.parse(fs.readFileSync(WL_FILE, 'utf-8'))

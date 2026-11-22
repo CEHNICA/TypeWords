@@ -5,13 +5,14 @@
  *
  * 断言：
  *   1. 8 套阶梯逐个切过去都能点「开始摸底」并加载出题（选项出现）
- *   2. 加载过程中**真的发起了**新增九年级册子的网络请求（不是只写在配置文件里）
+ *   2. 加载过程中**真的拉到了**新增九年级册子（不是只写在配置文件里）
  *   3. 每套阶梯的加载耗时在可接受范围（阶梯从 6 级涨到 13 级，怕加载爆炸）
  *   4. 页面无 JS 报错
  *
  * 用法：node _tools/_check_placement_ladders.js
  */
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
+const { waitForInteractive } = require('./_wait_ready')
 
 const BASE = process.env.TW_BASE_URL || 'http://localhost:5567'
 let failed = 0
@@ -39,31 +40,80 @@ const MUST_FETCH = {
   '莱芜五四制（山东版）': ['LWCZ-6-1', 'LWCZ-7-1', 'LWCZ-8-1', 'LWCZ-8-2', 'LWCZ-9-1'],
 }
 
+/** 该阶梯的教材按钮是否处于选中态（type=primary） */
+function isSelected(page, name) {
+  return page.evaluate((label) => {
+    const target = label.replace(/\s+/g, '').trim()
+    const btns = [...document.querySelectorAll('.base-button')]
+    const hit = btns.find(b => (b.textContent || '').replace(/\s+/g, '').trim() === target)
+    return !!hit && /primary/.test(hit.className || '')
+  }, name)
+}
+
 ;(async () => {
   const browser = await chromium.launch({ headless: true })
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
-  const page = await ctx.newPage()
+
   const pageErrors = []
-  const fetched = new Set()
-  page.on('pageerror', e => pageErrors.push(e.message))
-  page.on('request', r => {
-    const u = r.url()
-    if (u.includes('/dicts/')) fetched.add(u)
-  })
   const NOISE = /play\(\) request was interrupted|play\(\) failed because the user didn't interact|Cannot set properties of undefined \(setting 'volume'\)/
 
   for (const name of LADDERS) {
-    fetched.clear()
-    await page.goto(BASE + '/placement-test', { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(900)
+    // 每个阶梯用**独立 context**：
+    //  1) 复用同一个 page 时，上一个阶梯没下完的请求会飘到下一轮，污染 fetched（实测会混进 20 册）；
+    //  2) 独立 context = 独立 HTTP 缓存 → 每个阶梯都真的走网络，能验到「册子被拉下来」。
+    const ladderCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+    const page = await ladderCtx.newPage()
 
-    const btn = page.locator(`text=${name}`).first()
-    if (!(await btn.count())) {
-      check(`阶梯「${name}」在 setup 页能找到按钮`, false, '按钮没渲染')
+    const fetched = new Set()
+    page.on('pageerror', e => pageErrors.push(e.message))
+    page.on('request', r => {
+      const u = r.url()
+      if (u.includes('/dicts/')) fetched.add(u)
+    })
+
+    await page.goto(BASE + '/placement-test', { waitUntil: 'domcontentloaded' })
+
+    // **必须等 Nuxt hydrate 完**（见 _wait_ready.js 的说明）：
+    // 固定 sleep 会在 hydrate 完成前点击 → 事件没绑上 → 点了没反应，
+    // 加载的仍是默认阶梯（莱芜）→ '没看到请求' 假红。
+    // 另一层坑：onMounted 会把选中态强制拉回默认阶梯，
+    // 点之前没等它跑完，「点前 primary」在不同用例里五花八门。
+    let switched = false
+    for (let round = 0; round < 3 && !switched; round++) {
+      const ready = await waitForInteractive(page, 30000)
+      if (!ready) break
+
+      const btn = page.locator(`text=${name}`).first()
+      if (!(await btn.count())) {
+        check(`阶梯「${name}」在 setup 页能找到按钮`, false, '按钮没渲染')
+        break
+      }
+      await btn.click()
+
+      // 点一次就够；等选中态真的切过来（读用户可见状态，不读内部变量）
+      try {
+        await page.waitForFunction(
+          (label) => {
+            const target = label.replace(/\s+/g, '').trim()
+            const btns = [...document.querySelectorAll('.base-button')]
+            const hit = btns.find(b => (b.textContent || '').replace(/\s+/g, '').trim() === target)
+            return !!hit && /primary/.test(hit.className || '')
+          },
+          name,
+          { timeout: 10000, polling: 200 }
+        )
+        switched = true
+      } catch (e) {
+        // 兜底：生产构建没有 useNuxtApp，hydrate 信号不可用 → 刷新整轮重来
+        if (round < 2) {
+          await page.goto(BASE + '/placement-test', { waitUntil: 'domcontentloaded' })
+        }
+      }
+    }
+    check(`阶梯「${name}」点得动（选中态切成 primary）`, switched, '点了没反应')
+    if (!switched) {
+      await ladderCtx.close()
       continue
     }
-    await btn.click()
-    await page.waitForTimeout(300)
 
     const desc = await page.evaluate(() => {
       const t = (document.body.textContent || '').replace(/\s+/g, ' ')
@@ -81,7 +131,10 @@ const MUST_FETCH = {
     const cost = Date.now() - t0
 
     check(`阶梯「${name}」能加载出题`, loaded, `等了 ${(cost / 1000).toFixed(1)}s 还没出选项`)
-    if (!loaded) continue
+    if (!loaded) {
+      await ladderCtx.close()
+      continue
+    }
 
     const optCount = await page.locator('.option').count()
     check(`阶梯「${name}」出题有 4 个选项`, optCount === 4, `实际 ${optCount} 个`)
@@ -94,9 +147,16 @@ const MUST_FETCH = {
     })
     check(`阶梯「${name}」显示了当前难度标签`, !!diffLabel, '没找到「当前难度：xxx」')
 
-    // ---- 关键：确认新增册子被真实下载（不是只在配置里躺着）
+    // ---- 关键：确认新增册子被真实拉下来（不是只在配置里躺着）
+    // 必须等请求真的落地：`.option` 出现只说明第一道题渲染了，
+    // 后面几本册子可能还在下载中 → 轮询等到全部命中或超时。
     const need = MUST_FETCH[name] || []
-    const missing = need.filter(k => ![...fetched].some(u => u.includes(k)))
+    const deadline = Date.now() + 30000
+    let missing = need.filter(k => ![...fetched].some(u => u.includes(k)))
+    while (missing.length && Date.now() < deadline) {
+      await page.waitForTimeout(300)
+      missing = need.filter(k => ![...fetched].some(u => u.includes(k)))
+    }
     check(
       `阶梯「${name}」真的下载了 ${need.length ? need.length + ' 本' : '全部'}册子（含初中/九年级）`,
       missing.length === 0,
@@ -104,6 +164,7 @@ const MUST_FETCH = {
     )
 
     console.log(`[INFO] 「${name}」加载耗时 ${(cost / 1000).toFixed(1)}s｜描述：${desc.slice(0, 40)}`)
+    await ladderCtx.close()
   }
 
   const realErrors = pageErrors.filter(e => !NOISE.test(e))

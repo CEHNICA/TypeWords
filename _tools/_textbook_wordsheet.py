@@ -488,11 +488,25 @@ def entry_alts(piece):
     return [(alt, cn2) for alt in alts if alt]
 
 
+class TextbookPdfMissing(Exception):
+    """课本 PDF 不在本地（路径没配 / 文件不在）"""
+
+
 def heads_of(bid):
     """→ (有序词头列表, {词头: 课本释义})"""
     mode = 'primary' if bid.startswith('LWXX') else 'junior'
     import pymupdf
-    doc = pymupdf.open(os.path.join(etw['PDF_DIR'], etw['PDFS'][bid]))
+    pdf_path = os.path.join(etw['PDF_DIR'], etw['PDFS'][bid])
+    if not os.path.isfile(pdf_path):
+        raise TextbookPdfMissing(
+            '课本 PDF 不在本地：%s\n'
+            '  当前 PDF 目录：%s\n'
+            '  三种配法（任选其一）：\n'
+            '    1) 设环境变量 TW_TEXTBOOK_PDF_DIR=<课本PDF所在目录>\n'
+            '    2) 写 data/local_paths.json：{"textbookPdfDir": "<目录>"}\n'
+            '    3) 把 PDF 放到 <repo>/课本PDF/ 下'
+            % (pdf_path, etw['PDF_DIR']))
+    doc = pymupdf.open(pdf_path)
     start = find_wordlist_start(doc)
     order = []
     heads = {}

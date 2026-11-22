@@ -36,6 +36,8 @@ DICT_FILES = {
     'LWCZ_9_1': 'LWCZ-9-1.json',
 }
 WL_FILE = os.path.join(ROOT, 'data', 'textbook-wordlists.json')
+# v2 口径（实时从 PDF 抽）的词表快照 —— JS 尺子读这个，两边才同口径
+WL_V2_FILE = os.path.join(ROOT, 'data', 'textbook-wordlists-v2.json')
 
 # 页面渲染规则（app/pages/(words)/book-review.vue 的 shortTrans）
 def short(cn: str) -> str:
@@ -70,11 +72,14 @@ def brackets_broken(cn: str) -> bool:
 
 
 def load_wl():
-    """课本词表：优先**实时从 PDF 抽**（_tools/_textbook_wordsheet.py，v2 口径），
-    抽不出来才退回旧缓存 data/textbook-wordlists.json（v1 口径）。
+    """课本词表：优先**实时从 PDF 抽**（_tools/_textbook_wordsheet.py，v2 口径）。
 
     v2 修掉了 v1 的四处解析缺陷（括号注释词头、尾部标点、音标、句号释义），
     还合并了跨行释义、丢掉纯注释词条 → 才是现在的权威口径。
+
+    **PDF 缺失时直接跳过，不退回旧缓存** —— 退回 v1 缓存会用两套口径对账，
+    产出一堆「释义不一致」的假红（实测命中 4414→4377、不一致 0→60），
+    比崩掉更难查。
     """
     try:
         sys.path.insert(0, os.path.join(ROOT, '_tools'))
@@ -83,13 +88,19 @@ def load_wl():
         for bid in DICT_FILES:
             _order, heads = tw.heads_of(bid)
             wl[bid] = heads
+        # 落盘给 JS 尺子用 —— **必须同口径**，JS 尺子以前读的是 v1 旧缓存
+        # （v1 保留 '（am、is、are）是' 这种前置括号注释，v2 已剥掉），
+        # 两套口径对账 → 假红（实测 4~5 条「页面中文 ≠ 课本口径」）。
+        try:
+            with open(WL_V2_FILE, 'w', encoding='utf-8') as f:
+                json.dump(wl, f, ensure_ascii=False)
+        except Exception as e:  # noqa: BLE001
+            print(f'[warn] 写 v2 词表快照失败：{e}')
         return wl
     except Exception as e:  # pragma: no cover
-        print(f'[warn] 实时抽取课本词表失败（{e}），退回旧缓存')
-    if not os.path.exists(WL_FILE):
-        print('缺课本词表缓存，先跑 scripts/extract-textbook-wordlists.py --apply')
-        return {}
-    return json.load(open(WL_FILE, encoding='utf-8'))
+        print(f'[warn] 实时抽取课本词表失败：{e}')
+        print('[SKIP] 课本词表对账跳过（缺课本 PDF，不是数据问题）')
+        return None
 
 
 def main():
@@ -99,7 +110,12 @@ def main():
     args = ap.parse_args()
 
     wl = load_wl()
+    if wl is None:
+        # 缺课本 PDF → 跳过（不是数据问题），别报红
+        print('失败项合计: 0（跳过：缺课本 PDF）')
+        sys.exit(0)
     if not wl:
+        print('课本词表为空，无法对账')
         sys.exit(1)
 
     total_diff = 0

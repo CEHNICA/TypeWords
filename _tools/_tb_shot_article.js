@@ -1,7 +1,7 @@
 // 跟打页正文截图（元素级），用于视觉模型验收：
 // 1) 确认单词之间视觉上有空格
 // 2) 确认没有 hover 查词浮层残留（把鼠标挪走后应消失）
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 const path = require('path')
 const fs = require('fs')
 

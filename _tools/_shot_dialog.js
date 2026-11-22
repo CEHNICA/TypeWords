@@ -1,6 +1,8 @@
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright');
+const { chromium } = require('./_playwright');
 
-const OUT = 'C:/Users/17321/Documents/破甲';
+const path = require('path')
+const ROOT = path.join(__dirname, '..')
+const OUT = path.join(ROOT, '_shots')
 
 (async () => {
   const browser = await chromium.launch();
@@ -52,7 +54,7 @@ const OUT = 'C:/Users/17321/Documents/破甲';
   try {
     const fileInput = await page.$('.import-article input[type=file]');
     if (fileInput) {
-      await fileInput.setInputFiles('C:/Users/17321/Documents/破甲/typewords-src/_tools/samples/my_article_en.txt');
+      await fileInput.setInputFiles(path.join(__dirname, 'samples', 'my_article_en.txt'));
       await page.waitForTimeout(800);
     }
   } catch (e) {

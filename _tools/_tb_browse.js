@@ -1,4 +1,4 @@
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 const path = require('path')
 const fs = require('fs')
 

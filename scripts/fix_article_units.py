@@ -44,9 +44,11 @@ import json
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 课本 PDF 所在目录（本机私有路径不入库）：用环境变量 TW_TEXTBOOK_PDF_DIR 指定
-PDF_DIR = os.environ.get(
-    'TW_TEXTBOOK_PDF_DIR') or os.path.join(ROOT, '课本PDF')
+# 课本 PDF 所在目录（本机私有路径不入库）
+#   env TW_TEXTBOOK_PDF_DIR → data/local_paths.json → <repo>/课本PDF
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from local_paths import resolve_pdf_dir  # noqa: E402
+PDF_DIR = resolve_pdf_dir()
 ART_DIR = os.path.join(ROOT, "public", "dicts", "en", "article")
 
 BOOKS = [

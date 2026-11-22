@@ -10,7 +10,7 @@
  *
  * 用法：node _tools/_check_placement_advice.js
  */
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 
 const BASE = process.env.TW_BASE_URL || 'http://localhost:5567'
 let failed = 0

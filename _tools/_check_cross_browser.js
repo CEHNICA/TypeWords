@@ -4,7 +4,7 @@
  *   2. 能进详情页、练习页（有原文有译文，不是空书）
  *   3. 删除后服务端副本也被删掉（不留在磁盘）
  */
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 
 const BASE = 'http://localhost:5567'
 let failed = 0

@@ -102,7 +102,7 @@ async function main() {
   const concIdx = args.indexOf('--conc')
   const CONC = concIdx >= 0 ? Number(args[concIdx + 1]) : 10
 
-  const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+  const { chromium } = require('../_tools/_playwright')
   const b = await chromium.launch({ headless: true })
   const ctx = await b.newContext()
   page = await ctx.newPage()

@@ -1,5 +1,5 @@
 // 给「青少年英语」分组截个图，供视觉模型验收
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 const path = require('path')
 const BASE = 'http://localhost:5567'
 const OUT = path.join(__dirname, '..', '_shots')

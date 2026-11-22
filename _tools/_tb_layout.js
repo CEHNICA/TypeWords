@@ -1,5 +1,5 @@
 // 探测跟打页版面：目录抽屉是否遮挡正文、遮罩能不能关掉
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 const path = require('path')
 
 const SHOTS = path.join(__dirname, '..', '_shots')

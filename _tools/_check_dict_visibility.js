@@ -1,5 +1,5 @@
 // 逐个分类、逐个标签页点开，把每个标签下真正可见的册子全扒出来
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 const path = require('path')
 const fs = require('fs')
 const BASE = 'http://localhost:5567'

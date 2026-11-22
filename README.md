@@ -117,6 +117,31 @@ This project is built with `Nuxt` and requires a Node.js environment.
 5. Open [`http://localhost:5567`](http://localhost:5567) in your browser to access the project.
 6. Run `pnpm run generate` to build the project files.
 
+### Local-only paths (textbook PDFs, backups)
+
+Some tools under `_tools/` and `scripts/` need resources that are **not** in this
+repository: the Laiwu textbook PDFs and the dictionary backup folders. They are
+resolved in three steps (`scripts/local_paths.py`):
+
+1. Environment variable — `TW_TEXTBOOK_PDF_DIR`, `TW_DICT_BACKUP`
+2. `data/local_paths.json` (git-ignored, machine-local), e.g.
+
+   ```json
+   {
+     "textbookPdfDir": "D:\\教材\\莱芜英语课本\\压缩版",
+     "dictBackup": "D:\\备份\\_dict_backup_20261122"
+   }
+   ```
+3. Repository-relative fallback — `<repo>/课本PDF`
+
+The checks that need the PDFs (`check_book_wordsheet.py`, `check_textbook_trans.py`)
+report a clear error instead of crashing when the PDFs are missing.
+
+### Health checks
+
+`_tools/_run_all_checks.ps1` runs the whole suite (data checks + browser checks).
+It prints `失败项合计: N` at the end — that number must be `0`.
+
 ## Features and Suggestions
 
 The project is currently in early development, with new features being added continuously. If you have any suggestions or feature requests, feel free to open an `Issue`.

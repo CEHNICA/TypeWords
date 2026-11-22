@@ -18,9 +18,11 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 旧版词库备份目录（写盘前的手动备份）：可用环境变量 TW_DICT_BACKUP 覆盖
-BK = os.environ.get('TW_DICT_BACKUP') or os.path.join(
-    os.path.dirname(ROOT), '_dict_backup_20261122')
+# 旧版词库备份目录（写盘前的手动备份）
+#   env TW_DICT_BACKUP → data/local_paths.json → <repo>/../_dict_backup_20261122
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+from local_paths import resolve_dict_backup  # noqa: E402
+BK = resolve_dict_backup('_dict_backup_20261122')
 FILES = ['LWXX-3-1', 'LWXX-3-2', 'LWXX-4-1', 'LWXX-4-2', 'LWXX-5-1', 'LWXX-5-2',
          'LWCZ-6-1', 'LWCZ-6-2', 'LWCZ-7-1', 'LWCZ-7-2', 'LWCZ-8-1', 'LWCZ-8-2',
          'LWCZ-9-1']

@@ -6,7 +6,7 @@
  *   2. 点第 N 句的播放按钮 → 发出的音频请求 le 参数只包含**这一句**的文本
  *      （不是整段、不是整篇）
  */
-const { chromium } = require('C:/Users/17321/AppData/Roaming/npm/node_modules/playwright')
+const { chromium } = require('./_playwright')
 
 const BASE = process.env.TW_BASE_URL || 'http://localhost:5567'
 const BOOK = process.env.TW_BOOK || '262'

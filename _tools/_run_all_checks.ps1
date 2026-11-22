@@ -18,6 +18,8 @@ $py = @(
   @('check_word_lookup.py', '--http'),
   @('check_test_flow.py', '--http'),
   @('check_custom_import.py', ''),
+  @('check_ctrl_chars.py', ''),
+  @('check_doc_intact.py', ''),
   @('check_book_wordsheet.py', ''),
   @('check_book_wordsheet.py', '--selftest'),
   @('_check_dict_format.py', ''),
@@ -34,7 +36,7 @@ foreach ($it in $py) {
   $tag = if ($code -eq 0) { 'PASS' } else { 'FAIL'; $bad++ }
   Write-Output "[$tag] $f $arg -> $tail"
 }
-$node = @('_check_read_aloud.js', '_check_placement_ui.js', '_check_lookup_ui.js', '_check_custom_import_ui.js')
+$node = @('_check_read_aloud.js', '_check_placement_ui.js', '_check_lookup_ui.js', '_check_custom_import_ui.js', '_check_book_review_trans.js', '_check_placement_ladders.js')
 foreach ($f in $node) {
   if (-not (Test-Path "$p\_tools\$f")) { Write-Output "[SKIP] $f"; continue }
   $out = node "$p\_tools\$f" 2>&1

@@ -2,7 +2,8 @@
 从莱芜五四制英语课本 PDF 提取课文 → TypeWords article 书
 ==========================================================
 
-输入：C:\\Users\\17321\\WPSDrive\\403466883\\WPS云盘\\莱芜英语课本\\压缩版\\*.pdf
+输入：课本 PDF（目录见 scripts/local_paths.py 的解析顺序：
+      env TW_TEXTBOOK_PDF_DIR → data/local_paths.json → <repo>/课本PDF）
 输出：
   public/dicts/en/article/LWCZ_<册>.json   每篇课文一个对象
   public/list/article.json                加对应的书单条目
@@ -44,9 +45,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import textbook_text_repair as TTR   # noqa: E402  文本清洗 + 断词修复
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 课本 PDF 所在目录（本机私有路径不入库）：用环境变量 TW_TEXTBOOK_PDF_DIR 指定
-PDF_DIR = os.environ.get(
-    'TW_TEXTBOOK_PDF_DIR') or os.path.join(ROOT, '课本PDF')
+# 课本 PDF 所在目录（本机私有路径不入库）
+#   env TW_TEXTBOOK_PDF_DIR → data/local_paths.json → <repo>/课本PDF
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from local_paths import resolve_pdf_dir  # noqa: E402
+PDF_DIR = resolve_pdf_dir()
 ARTICLE_DIR = os.path.join(ROOT, "public", "dicts", "en", "article")
 LIST_FILE = os.path.join(ROOT, "public", "list", "article.json")
 
