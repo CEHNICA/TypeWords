@@ -59,7 +59,7 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `app/pages/(words)/words.vue` | 「统计」与「我的词典」卡片之间插入「水平摸底测试」卡片 |
 | `app/core/utils/word-test.ts` | 加固：`relsOf()` + `trans` 兜底，小学词库残缺词条不再把整道题吞掉 |
 | `_tools/check_placement.py` | 新增：摸底链路体检器 32 项；后扩到 **45 项**（新增「答错信息完整性」维度：提示区 / 选项英文 / 明细误选 / CSV 误选列 / 红绿语义 / 撇号收紧 / 列宽不截断）；再扩到 **72 项**（新增「阶梯铺到九年级」维度：分年级阶梯末级必须是九年级 / PEP·冀教·莱芜必须挂对初中册 / 外研初中独立成阶梯 / 莱芜名字说清含初中 / `afterTop` 指路正确） |
-| `_tools/_check_placement_ui.js` | 新增：摸底**浏览器实测** 14 项（答错提示 / 选项英文 / 明细误选 / CSV 下载内容 / 撇号无断词 / 无 JS 报错，音频噪音报错豁免） |
+| `_tools/_check_placement_ui.js` | 新增：摸底**浏览器实测** 14 项（答错提示 / 选项英文 / 明细误选 / CSV 下载内容 / 撇号无断词 / 无 JS 报错，音频噪音报错豁免）；后**重写为确定性版**（2026-11-22）：正确项从 **Vue 组件状态** 读 `correctIndex`（`.option` 元素的 `__vueParentComponent.parent.setupState.question`），第 1 题故意答错造误选样本、其余题全答对 —— 不再赌随机；英文词从提交后追加的 `.bg-third` 芯片 span 取，不解析拼接文本；英文正则放行 U+2019 弯撇号 |
 | `_tools/_shot_placement.js` | 新增：摸底「答错后」+「报告页」截图（给视觉模型验收） |
 | `_tools/_check_placement_ladders.js` | 新增：**8 套阶梯浏览器实测**（逐套加载出题 + **抓网络请求证明新增九年级册子真被下载** + 加载耗时） |
 | `_tools/_check_placement_advice.js` | 新增：报告页文案实测（8 套按钮齐全 / 「共 N 个年级」对得上 / 没摸到顶时不瞎喊「摸到顶了」） |
@@ -101,6 +101,16 @@ master 分支。跑在 http://localhost:5567（`pnpm run dev`）。
 | `_tools/check_textbook_articles.py` | 新增：课本课文体检器 **280 项**（含 HTTP） |
 | `_tools/_tb_revert_check.py` | 新增：体检器**退回验证**（6 个坏样本各精确红在自己那条 + 1 个负对照） |
 | `_tools/_tb_browse.js` / `_tb_layout.js` | 新增：跟打页 Playwright 实测 + 截图（书单 → 进书 → 跟打） |
+| `scripts/split-article-sentences.js` | 新增：**课文切句器**（一个自然段 = 一行 → 一行 = 一句，跟打页和朗读都靠这个粒度）；缩写表分 `ABBR_ANY` / `ABBR_CAP`（大小写是语义的一部分） |
+| `scripts/translate_via_llm.py` | 新增：**MiniMax 逐句翻译**（逐句串行 + 句间 120ms，缓存 `data/article-translations-llm.json`） |
+| `scripts/fix_article_units.py` | 新增：课文 **unit 前缀修正**（只修「前缀错」，不补「缺前缀」）+ `sync_title_translate()` 同步中文译文编号 |
+| `scripts/json_io.py` | 新增：**保持原格式写回 json**（197 册 compact 单行 / 10 册 indent=2+CRLF，写回必须用 `dump_like()`） |
+| `_tools/fix_article_apostrophes.py` | 新增：英文课文撇号归一（只动 `text`/`title`，中文译文里的中文引号不动） |
+| `_tools/fix_dict_clean.py` | 新增：词库清洗（控制字符 / `null` 标记 / 重复释义合并 / 已知错位修复） |
+| `_tools/dedupe_dict_trans.py` / `fix_dict_relwords.py` / `fix_dict_last.py` | 新增：词库去重 9664 条 / 清空错配 relWords 16838 条 / 最后 5 条（laurel×4 + problemn） |
+| `_tools/check_article_quality.py` / `check_title_unit.py` | 新增：课文质量尺子 + 中英 unit 号一致性尺子 |
+| `_tools/check_dict_data.py` / `check_dict_family.py` | 新增：词库 5 类脏数据尺子 + relWords 归属尺子 |
+| `_tools/check_dict_glue.py` | 改：粘连词判据加严（原判据把 greece 拆成 gree+ce，全是假阳性） |
 
 ## 莱芜课本课文（2026-11-21 新增）
 
@@ -119,7 +129,7 @@ PDF 源：`C:\Users\17321\WPSDrive\403466883\WPS云盘\莱芜英语课本\压缩
 | 初中八上八下 | `LWCZ_8_1 / 8_2` | 27 / 11 | 44329 / 18111 |
 | 初中九上 | `LWCZ_9_1` | 44 | 79193 |
 
-合计 328 篇 / 约 30.6 万字符。`public/list/article.json` 里 id **250~262**，
+合计 353 篇 / 约 31 万字符 / **7108 句**（2026-11-22 切句 + 补译后）。`public/list/article.json` 里 id **250~262**，
 `enName` = `lwxx_3_1`…`lwcz_9_1`，`url` = `<KEY>.json`，`length` 与实际篇数一致。
 
 ```powershell
@@ -132,7 +142,8 @@ python scripts\extract-textbook-articles.py                # 写入模式（会�
 $env:TTB_REJECT_ELLIPSIS='1'; $env:TTB_REJECT_LOWER='1'; $env:TTB_MIN_WORDS='4'
 ```
 
-**课文没有逐句中文翻译**（课本 PDF 只有英文正文）→ `textTranslate` 留空（前端有 `v-if` 守卫）。
+**课文有逐句中文翻译**（2026-11-22 补齐，MiniMax API 翻译）：353 篇 / 7108 句 / 已译 7108，失败 0。
+翻译流水线见下面「课文数据修复流水线」。
 
 ### 提取 PDF 的坑（别再犯）
 
@@ -168,6 +179,132 @@ $env:TTB_REJECT_ELLIPSIS='1'; $env:TTB_REJECT_LOWER='1'; $env:TTB_MIN_WORDS='4'
 - **一句一段**：段落用 `\n\n` 分隔（上游 `genArticleSectionData` 靠这个断句；写成 `\n` → 译文错位）。
 - 跟打页路由 `/practice-articles/{bookId}`，**bookId 是书 id**，篇内定位靠数组下标。
 - 标题格式：`Unit N · Lesson N 课名`（小学）/ 纯话题标题（初中）。
+
+## 课文数据修复流水线（2026-11-22 新增）
+
+用户报「英文的翻译好像还没有放进去」+「他竟然一次性就说到底了」→ 两个问题同源：
+课文导入只做了 PDF 提取和断词修复，**句子粒度太粗**（一个自然段被挤成一行），
+于是朗读（`playSentenceAudio` 拿整行去发音）像「一次性读完」，译文也没地方挂。
+
+修法走**数据层**（改 article json，**不动前端代码**）。
+
+```powershell
+cd C:\Users\17321\Documents\破甲\typewords-src
+node scripts\split-article-sentences.js                            # 切句
+py -3 scripts\translate_via_llm.py --batch 40 --model MiniMax-M2.7-highspeed --apply   # 翻译
+py -3 scripts\fix_article_units.py --pages LWCZ_6_1,...,LWCZ_9_1 --apply              # unit 前缀
+python _tools\fix_title_translate_unit.py --apply                  # 中文译文里的 unit 前缀
+```
+
+### 关键坑
+
+1. **切句器必须区分缩写的大小写**（`scripts/split-article-sentences.js`）：
+   - `ABBR_ANY`（大小写不敏感）：e.g / i.e / u.s / u.k / etc / vs
+   - `ABBR_CAP`（**必须原文首字母大写**）：mr / mrs / ms / dr / prof / st / jr / sr / fig / inc / ltd / co / dept / est
+   - 混在一起就会把 `They said no. Then…` 整句不切（`no.` 被当 no. 缩写）。
+   → 重跑后 7107 → **7108 句**（LWCZ_7_1 +1）。
+2. **切句会清空该文章的 `textTranslate`** → 改完课文**必须重跑翻译**，否则译文没了。
+3. **翻译必须逐句串行 + 句间 120ms 间隔**（见硬规矩 17）；走 MiniMax API，
+   上游 `translate.ts` 的百度翻译需要 appid/key，本地没有 → 前端译文只能走**预置数据 `textTranslate`**。
+4. **译文回填格式**：段用 `\n\n`、句用 `\n`，与 `genArticleSectionData` 的切分**完全对齐**。
+5. **翻译缓存**在 `data/article-translations-llm.json`（6698 条），重跑不会重复花钱。
+6. **unit 前缀只修「前缀错」，不补「缺前缀」** —— 缺前缀 = 课本正文本来就没写 Unit 标记，
+   补上去是**编造课本没有的信息**。
+7. **`build_title` 保持原格式**（`Unit N · base`，不分 rp/main），避免引入新形态造成格式漂移。
+8. **小学册排除在 unit 写盘范围外** —— v6 判据对小学不可信，且小学现有前缀本身是对的。
+9. **改了标题要同步中文译文**：`sync_title_translate()` 把中文译文里「第N单元」的编号跟着改
+   （认阿拉伯数字和中文数字两种写法）。
+10. **上游词库 `relWords` 整组错配**（见下面词库节）→ `word-test.ts` 的相似度出题被污染。
+11. **朗读「一句一句」的验收方式**：浏览器实测抓 `https://dict.youdao.com/dictvoice?audio=…&type=2`
+    的 **`audio` 参数**（URL 里参数名是 `audio` 不是 `le`），确认它就是被点的那一句，
+    不是整段/整篇。尺子：`node _tools\_check_read_aloud.js`（7 项）。
+12. **撇号有多种 Unicode 形态，别只防 U+2019**（2026-11-22 踩到）：
+    - 课本 PDF 里同一个撇号会出现 `’`(U+2019) / `‘`(U+2018) / **`‛`(U+201B)** /
+      `‚`(U+201A) / `′`(U+2032) / `ʼ`(U+02BC) / `‵`(U+275B) 等好几种。
+    - **八下 Unit 5/6/7 用的是 U+201B**，`scripts/textbook_text_repair.py` 的 `QUOTE_MAP`
+      原来只列了 5 种 → 漏了 U+201B → 提取出来的课文带 `I‛m`。
+    - 跟打页是**逐字符比对**，用户键盘打的是 ASCII `'` → 非 ASCII 撇号**永远打不出来**。
+    - 修法（已做）：`QUOTE_MAP` 补全 9 种 + `_tools/fix_article_apostrophes.py` 归一存量数据
+      （**只动 `text`/`title`**，中文译文里的 `’‘` 是中文单引号，正确，不能动）。
+    - **尺子的锅**：`check_textbook_articles.py` 原来只查 U+2019 → 5 处 U+201B 全被放行（漏报）。
+      改成查全部形态时又踩了第二个坑：`CURLY_APOS in text` 是**子串匹配**，
+      多字符串要求连续出现整个串 → 文本里只有一个撇号时永远匹配不上（假阴性）。
+      → **必须写 `any(ch in text for ch in CURLY_APOS)`**。
+      这条是被 `_tools\_tb_revert_check.py`（退回验证）当场抓住的。
+
+## 词库数据清洗（2026-11-22 新增）
+
+用户「再看看有什么问题」深挖到词库脏数据层，**全部在数据层修，没动前端**。
+
+```powershell
+cd C:\Users\17321\Documents\破甲\typewords-src
+python _tools\dedupe_dict_trans.py --apply      # 去重释义 9664 条
+py -3 scripts\fill_missing_dict_translations.py --all --apply   # 补释义 1188 → 5
+python _tools\fix_dict_relwords.py --apply       # 清空错配 relWords 16838 条
+python _tools\fix_dict_clean.py --apply          # 控制字符/null标记/重复条目/错位
+python _tools\fix_dict_last.py --apply           # 最后 5 条（laurel×4 + problemn）
+```
+
+### 判据（写之前先想清楚，别乱改）
+
+1. **词条主释义字段是 `trans[]`（带 pos）**，`synos[]` 只是同义词补充。
+   只看 `synos` 会把 9905 条正常词误判成「无释义」。
+2. **去重分两套判据**：
+   - `trans`（无 ws 字段）→ `(pos, cn)` 相同才算重复；
+   - `synos`（带 ws 近义词组）→ 必须 `(pos, cn, ws)` **全同**才算重复
+     （同中文不同 ws 是不同近义词组，去掉会丢信息；实测 296 条属此类，**不动**）。
+3. **`relWords` 整组错配是上游的锅，无法复原，只能清空**。三个排除性结论（都实测过）：
+   - 不是固定下标偏移（K 扫描：K=0 命中 56%，其它 K 均 ≈0.1%）；
+   - 不是成对置换（抽查 0 条）；
+   - 跨册回填覆盖率 **0%**（错配词头在所有册里都坏，没有干净副本）。
+   - 判据**只清「彻底无关」那一档**（族里没有任何词与词头有 ≥2 字符公共前缀）。
+     放弃过「相似度 < 0.75」那档 —— 误杀 `explosive←explode` / `drunk←drink` /
+     `audience←auditory`（英语派生不都是前缀关系，drink→drunk 是元音变化）。
+     **宁可漏报不可误清正确数据 —— 精确率优先。**
+   - 已知漏报（故意保留）：`regarding←registry` / `standpoint←startle` / `cassette←cave`
+     这类共享 2~3 字符前缀的错配。
+4. **释义空缺 1188 → 5**：优先从离线词典（65,655 词）+ 其它 207 册复用，
+   复用不回来的 355 个唯一词才送 LLM（速率 4~5 词/s，失败 0）。
+   脚本要支持 `--all`（原来只处理 tags 含「六」「九」的册）。
+5. **`laurel` ×4**：trans 空但 synos 里有中文 → 搬进 trans（**`problemn` 分支必须排在
+   「synos→trans」分支前面**，否则会把别人的释义搬过来）。
+6. **`problemn`**（beijing_junior_high_school idx 1199）是**双重损坏**：词头多一个 n，
+   内容整条是 `snowy` 的（同册已有完整 snowy）→ 词头改回 `problem`，释义取自离线词典，
+   snowy 那套错内容一并清掉。
+7. **控制字符**：释义末尾混进 `\x08`（如 `'圆圈\x08'`），87 处。
+8. **`null` 标记**：上游 null 值被字符串化（`'null （Stray）（挪、美、英、俄）斯特雷（人名）'`、
+   `'…；null'`），31 处。
+9. **`bridging` 释义错位**：`'unit 衔接单元'`（把同册 `unit` 的英文拼上来了）→
+   改成 `n. 架桥；搭桥` + `v. 架桥；搭桥；连接`。
+
+### 尺子假阳性（这轮踩得最狠，记一下）
+
+- **`check_dict_data.py` 的 D3**：「所有中文都一样」会误杀 381 条 `n. 预测` / `v. 预测`
+  （不同词性同中文，正常）。真缺陷是「同中文 + 其中一条 pos 为空」。
+- **`check_dict_family.py` 的 v2 判据**（相似度 < 0.75）误杀一堆英语派生词，见上面第 3 条。
+- **`check_dict_glue.py`** 原来只查 `synos` 为空 → `greece` 能拆成 `gree+ce`、
+  `france` 拆成 `fr+ance`、`bathtub` 拆成 `bath+tub`，**全是假阳性**
+  （离线词典里收录了 ce/ai/fr/er/un 这些两三字母缩写）。
+  现在要求：① 词条**完全没有释义**（trans 和 synos 都空）② 拆出的两段长度 ≥4 ③ 不是缩写。
+  → 全库 207 册 **0 真粘连词**。
+- **`check_dict_head_mismatch.py` / `check_dict_typo.py` 已删除**（误报 10 万 / 175 条，别再跑）。
+
+### 词库 json 的格式规矩（**写回必须照原样**）
+
+207 册有两种形态：**197 册 compact 单行**（无 BOM / 无末尾换行）＋ **10 册 indent=2 + CRLF + 末尾换行**。
+用 `json.dumps(indent=2)` 重写会把 compact 文件撑成 4 倍。
+
+```python
+import sys; sys.path.insert(0, r"...\scripts")
+from json_io import dump_like, load_preserve
+arr, raw = load_preserve(path)
+open(path, "wb").write(dump_like(raw, arr))
+```
+
+**⚠️ 词库 json 改动不进 git**：`.gitignore` 第 46 行 `public/dicts/**` 把它们排除了
+（只有 `public/dicts/en/word/CET4_T.json` 是早期 force-add 的例外）。
+→ 日后从镜像版重灌词库，**本轮所有清洗结果都会丢**。
+重灌后跑 `python _tools\check_dict_data.py` + `check_dict_family.py` 会立刻报红。
 
 ## 六~九年级课本词表可见性（2026-11-21 新增）
 
@@ -211,8 +348,16 @@ python _tools\check_book_review.py --http  # 38 项，全绿 exit 0
 python _tools\check_article_import.py --http # 81 项，全绿 exit 0
 python _tools\check_word_lookup.py --http     # 89 项（查词），全绿 exit 0
 python _tools\check_textbook_articles.py --http # 280 项（莱芜课本课文），全绿 exit 0
-python _tools\check_dict_list.py --http         # 63 项（词典列表/六~九年级可见性），全绿 exit 0
+python _tools\check_dict_list.py --http         # 65 项（词典列表/六~九年级可见性），全绿 exit 0
 python _tools\_tb_revert_check.py             # 课文体检器退回验证（坏样本精确命中），全绿 exit 0
+
+# —— 2026-11-22 新增 ——
+python _tools\check_article_quality.py        # 课文质量：行内多句 / 句首小写 / 疑似乱序，失败项 0
+python _tools\check_title_unit.py            # 英文 Unit 号 vs 中文「第N单元」一致，失败项 0
+python _tools\check_dict_data.py             # 词库 5 类脏数据（D1~D5），全 0
+python _tools\check_dict_family.py           # relWords 归属错误 0 条
+python _tools\check_dict_glue.py             # 粘连词，全库 207 册 0 真粘连
+node   _tools\_check_read_aloud.js           # 朗读「一句一句」浏览器实测 7 项
 ```
 
 `node _tools\_check_lookup_ui.js` 走 Playwright 实测点词（查词链路每次改动必跑），
@@ -234,6 +379,19 @@ node scripts\augment-word-index.mjs   # 再灌 CC-CEDICT + 词形映射（缺词
 node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
 ```
 
+**全量回归一条命令**（2026-11-22 新增，dev server 要开着）：
+
+```powershell
+& _tools\_run_all_checks.ps1     # 末尾打印「失败项合计: N」，必须是 0
+```
+
+它把上面 17 个 py 尺子 + 4 个 node 浏览器实测串着跑一遍。
+**尺子文件不在就 SKIP，别当失败** —— 2026-11-22 核对时发现
+`_tools\check_skip_bridge.py` 和 `_tools\_check_skip_bridge_ui.js`（上一轮「跳读桥」）
+**在这个工作树里根本不存在**，`app/components/article/TypingArticle.vue` 里也没有跳读桥代码
+（`_shots\skip_bridge_page_1.png` 是旧截图残留）。跳读桥那摊活目前**不在本树**，
+要么重做要么从回归清单里删掉，别让回归脚本长期报红。
+
 ## 硬规矩（补）
 
 7. **灰按钮必须说清为什么灰**：任何 `:disabled` 的 BaseButton 都要同时给 `:disabled-reason`，
@@ -246,6 +404,12 @@ node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
 11. **断句一律复用上游 `splitEnArticle2` / `splitCNArticle2` / `genArticleSectionData`**：
     上游已处理缩写（Mr./U.S.）、数字千分位、智能引号、中文 Intl.Segmenter 断句，手搓必错。
 12. **文章正文结构 = 一句一段**：`text` / `textTranslate` 用 `\n\n` 分段，段落一一对应。
+13. **跟打页的「重要提示」弹窗会禁用键盘监听**：`ConflictNotice` 开着时 `useDisableEventListener`
+    把 `window.disableEventListener` 置 true → 键盘事件被吞 → **打不了字**。Playwright 实测必须先点
+    `#dialog-ok` 关掉它（该按钮还会被 `.panel-wrap` 挡住，用 `evaluate(el => el.click())`）。
+14. **read / grep 工具显示会丢字符**：`emitter.off(EventKey.onTyping, onTyping)` 会被显示成少了
+    `, onTyping` —— 拿它当 edit 的 old_string 必然匹配失败。改 `TypingArticle.vue` 这类 **CRLF** 文件时，
+    用 bash 的 `[System.IO.File]::ReadAllText` 取真实字节再替换（顺手把行尾统一回 CRLF）。
     上游 NCE 数据就是这结构；写成 `\n` 分句 → 跟打页译文跟英文错位。
 13. **i18n 语言包是 Tab 缩进**：`json.dumps(indent=2)` 重写会造成上千行 diff。
     加 key 要用**文本插入**（`head + ',\n\t"key": "value"\n' + tail`）再 `json.load()` 校验。

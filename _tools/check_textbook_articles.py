@@ -120,8 +120,11 @@ REPEAT_LETTER_RE = re.compile(r"([A-Za-z])\1")
 # ④ span 粘连没补空格 → 出现超长连续字母（英语单词最长也就 15 字母）
 #    注意排除社交账号 handle（"@thechinesechefblog" 是课文里真实出现的博主名）
 LONG_TOKEN_RE = re.compile(r"(?<![@#_A-Za-z0-9])[A-Za-z]{17,}")
-# ⑤ 撇号必须是 ASCII（跟打页逐字符比对，U+2019 会永远打不出来）
-CURLY_APOS = "\u2019"
+# ⑤ 撇号必须是 ASCII（跟打页逐字符比对，弯撇号会永远打不出来）
+#    **必须查全部 Unicode 形态**：课本 PDF 里同一个撇号会出现好几种
+#    （U+2019 / U+2018 / U+201B / U+201A / U+2032 / U+02BC / U+275B …）。
+#    原来只查 U+2019 → 八下 Unit 5/6/7 的 U+201B 全被放行（漏报）。
+CURLY_APOS = "\u2019\u2018\u201b\u201a\u2032\u02bc\u275b"
 
 
 def check_products():
@@ -208,7 +211,10 @@ def check_content():
             if m:
                 bad_long.append("%s: %s" % (title, m.group(0)[:24]))
             # ⑤ 弯撇号必须归一成 ASCII
-            if CURLY_APOS in text:
+            #    注意：要用 any() 逐字符判，不能写 `CURLY_APOS in text` ——
+            #    CURLY_APOS 是个多字符串，子串匹配要连续出现整个串才算命中，
+            #    文本里只有一个弯撇号时永远匹配不上（假阴性，已被退回验证抓到）。
+            if any(ch in text for ch in CURLY_APOS):
                 bad_apos.append(title)
             # ⑥ 断词：用提取器同一套判据（R1~R5），不要另起炉灶
             broken = repairer.find_broken(text, limit=3)
