@@ -70,6 +70,22 @@ def brackets_broken(cn: str) -> bool:
 
 
 def load_wl():
+    """课本词表：优先**实时从 PDF 抽**（_tools/_textbook_wordsheet.py，v2 口径），
+    抽不出来才退回旧缓存 data/textbook-wordlists.json（v1 口径）。
+
+    v2 修掉了 v1 的四处解析缺陷（括号注释词头、尾部标点、音标、句号释义），
+    还合并了跨行释义、丢掉纯注释词条 → 才是现在的权威口径。
+    """
+    try:
+        sys.path.insert(0, os.path.join(ROOT, '_tools'))
+        import _textbook_wordsheet as tw
+        wl = {}
+        for bid in DICT_FILES:
+            _order, heads = tw.heads_of(bid)
+            wl[bid] = heads
+        return wl
+    except Exception as e:  # pragma: no cover
+        print(f'[warn] 实时抽取课本词表失败（{e}），退回旧缓存')
     if not os.path.exists(WL_FILE):
         print('缺课本词表缓存，先跑 scripts/extract-textbook-wordlists.py --apply')
         return {}
@@ -91,6 +107,7 @@ def main():
     total_hit = 0
     total_write = 0
     total_skip = 0
+    total_trunc = 0
     per_book = []
     for bid, fname in DICT_FILES.items():
         if args.dump and bid != args.dump:
@@ -103,6 +120,7 @@ def main():
         hit = 0
         wrote = 0
         skipped = 0
+        truncated = 0
         for w in arr:
             word = (w.get('word') or '').strip()
             book_cn = book.get(word)
@@ -119,7 +137,18 @@ def main():
             hit += 1
             trans = w.get('trans') or []
             cur = trans[0].get('cn', '') if trans else ''
+            cur_n, book_n = norm(cur), norm(book_cn)
+            # 一致判定用 short() —— 页面真正显示的就是它
+            # （'比较' 与 '比较；对比' 在页面上长得一样，不算差异）
             if short(cur) == short(book_cn):
+                continue
+            # 课本值是页面值的**前缀** → 课本释义被 PDF 抽取截断了
+            # （'inspiration' 课本'鼓舞人心或' / 'gallery' 课本'画廊，美术'）
+            # → 保留信息更全的页面值，不覆盖。
+            if cur_n and book_n and len(book_n) >= 2 and cur_n.startswith(book_n):
+                truncated += 1
+                if args.apply:
+                    skipped += 1
                 continue
             diffs.append((word, cur, book_cn))
             if args.apply:
@@ -145,8 +174,10 @@ def main():
         total_diff += len(diffs)
         total_write += wrote
         total_skip += skipped
+        total_trunc += truncated
         per_book.append((bid, len(arr), hit, len(diffs)))
         print(f'{bid}: 词库 {len(arr)} 词，课本词表命中 {hit}，释义不一致 {len(diffs)}'
+              + (f'，课本截断保留 {truncated}' if truncated else '')
               + (f'（写回 {wrote}，跳过残缺 {skipped}）' if args.apply else ''))
         for word, cur, book_cn in diffs[:8]:
             print(f'    {word!r}: 页面显示={cur!r} 课本={book_cn!r}')
@@ -160,7 +191,9 @@ def main():
     print('-' * 60)
     print(f'合计：词库 {total_words} 词，课本词表命中 {total_hit}，释义不一致 {total_diff}')
     if args.apply:
-        print(f'写回 {total_write} 条，跳过（课本释义括号不闭合）{total_skip} 条')
+        print(f'写回 {total_write} 条，跳过（课本释义括号不闭合 / 课本值被截断）{total_skip} 条')
+    else:
+        print(f'其中课本释义被 PDF 截断、应保留页面完整值的 {total_trunc} 条')
 
 
 if __name__ == '__main__':

@@ -375,6 +375,91 @@ open(path, "wb").write(dump_like(raw, arr))
 - 退回验证：`_tools/_revert_check_book_review.py break|restore`
   （故意改坏一个词的释义 → 尺子必须红在「页面中文全部等于课本口径」那一条）。
 
+## 莱芜 13 册词表对账 + 补词（2026-11-22 新增）
+
+用户原话：「导入的英文单词准确吗？怎么感觉好像跟书籍有点差距呢就是五四教育莱芜区的那个英文单词」。
+
+**结论**：词库原本只覆盖课本词表的 **~92%**，差的就是真漏词 + 词形变体，不是「不准」。
+本轮补齐后 13 册 **MISSING 0 / 释义不一致 0 / 垃圾词头 0**。
+
+### 唯一口径模块：`_tools/_textbook_wordsheet.py`
+
+改词表相关逻辑**只能改这一个模块**，它对外提供：
+
+- `heads_of(bid)` → `(order, heads)`：从课本 PDF 抽该册词头（带出现顺序）
+- `gaps_of(bid, ...)`：课本有、词库没有的缺口
+- `head_ok(h, dict_keys, universe_keys)`：词头是否合格（能进词库）
+- `entry_alts(piece)`：**词头抽取的公共实现**（模块和诊断尺子必须共用这一份）
+- `dict_path(bid)` / `load_dict(bid)`
+
+> ⚠️ 词头抽取逻辑一旦在诊断脚本里自己抄一份，**对拍结论全是假的**。本轮 v9 就是在修这个。
+
+### 抽取器三条铁律（每条都是被数据否掉过的）
+
+1. **不能用「有没有音标」判断英文侧**——初中词表大量专名英文侧根本没有音标
+   （`Zhangjiajie National Forest Park`、`Amazon`）。
+2. **不能用「短中文行 = 分类小标题」**——实测 13 册词表里纯中文行去重 454 个，
+   **绝大多数是真词义**（`进入` x4 / `不寻常的` x4 / `累人的` x4 …），只有极少数是小标题。
+   靠这招过滤会误杀大量真词。
+3. **正确方向 = 噪声前置过滤 + 上下文归属**：
+   - 先滤掉页眉（`Reference Word List` / `Vocabulary in Each Unit` / `Vocabulary A—Z` …）、
+     分类小标题（`数词`/`月份`/`星期`）、表格续表头（`续表`）、版权页与后记长段落；
+   - 再用「这一行有没有英文侧」判断它是**新词条开始**还是**上一个词条的续行**；
+   - **定稿 = 括号平衡 + 有英文侧 + 有中文释义**。
+
+### 改抽取逻辑必须做新旧口径对拍
+
+`_tools/_check_wordsheet_diff.py` 打印 old / new 两个口径的词头差集（LOST / GAIN）。
+
+v9 的对拍结论：
+
+- 小学 6 册：**lost=0 gained=0**，全净。
+- 初中 LOST 全部是**该丢的垃圾**：页眉 `Vocabulary in Each Unit`、
+  附录裸词 `wrote`/`known`/`sent`、PDF 残片 `math )n` / `v. (stole , stolen )`。
+- 初中 GAIN 全部是**真词回捞**：`Zhangjiajie National Forest Park`、`Amazon`、`Helsinki`、
+  `Nobel Prize`、`Hans Christian Andersen`、`Alexander Graham Bell`、`grandmother`、`maths`、
+  `information technology`、`per cent` ……
+
+### 补词规则
+
+- 只补「**课本词表里有、词库完全没有**」的**单词型**条目。
+- 跳过：教辅省略短语、书名号作品名、截断短语（含 `one's`，如 `bottom of one's`）、
+  纯注释型词条、PDF 残缺词。
+- **复用优先于新建**：词库已有该词就只改 `trans[0].cn`，不要新建重复条目。
+- **只增不删**。
+- 覆盖型写回前**先剔除与新值重复的旧行**再把新值放首位（否则撞出「同值重复」脏数据）。
+- 覆盖前必须有 **repo 外备份**（词库被 gitignore，git 回滚不了）。
+
+本轮共补 **51 词**：六上 3 / 六下 1 / 七上 5 / 八上 3 / 八下 30 / 九上 9。
+
+### 尺子
+
+| 尺子 | 查什么 |
+| --- | --- |
+| `_tools/check_book_wordsheet.py` | `MISSING`（课本有词库没有）/ `TRANS`（释义口径不一致）/ `DIRTY`（词头含中文或标点） |
+| `_tools/check_book_wordsheet.py --selftest` | 尺子自身退回验证（内存里造坏样本，不碰磁盘） |
+| `_tools/fix_book_wordsheet_gaps.py` | 生成补词计划；`--apply` 才写回 |
+
+- `check_book(bid, book, order, heads, universe_keys)` 是**纯函数** → 才能在内存里造坏样本做退回验证。
+- `--selftest` 4 项：干净样本 0 问题；删 `centre` → 精确报 `MISSING centre`；
+  改坏 `banana` 释义 → 精确报 `TRANS banana`；混入垃圾词头 `续表` → 精确报 `DIRTY 续表`。
+- **文件级退回验证**（真删 `LWCZ-8-2` 的 `humorous` → 尺子红在 `MISSING humorous`、退出码 1
+  → 从 `破甲\_dict_backup_20261122e` 恢复 → 全绿）。
+
+### 本轮踩的坑
+
+1. **课本值是页面值的前缀 = 课本释义被 PDF 截断** → **保留页面完整值，不覆盖**
+   （如 `inspiration` 课本 `鼓舞人心或` vs 页面 `鼓舞人心或振奋人心`）。11 条。
+2. **括号注释在词头侧、不在释义侧**：`Miss /mɪs/ （对未婚女子的礼貌称呼）` + 下一行 `小姐；女士`
+   → 覆盖课本释义时括号那句自然丢掉，别把它当释义。
+3. **「释义括号不闭合」不能当全库通用尺子**——上游词典数据里 5704 条普遍半/全角混排，
+   只对莱芜 13 册查。
+4. `LWCZ-7-2` 的 `mm` 原条目是拼凑的（首释义 `/`、`millimeter) 毫米` 碎片、
+   `etymology` 混了别的词源串）→ 已重写为 毫米（millimeter）/ 唔，嗯 / 缅甸的域名，
+   `etymology` 置 null。
+5. PDF 私用区字符：八下音标是 `` = `Amazon`
+   → heads 侧要剥 `-`。
+
 ## 六~九年级课本词表可见性（2026-11-21 新增）
 
 用户反馈「六年级到九年级的单词好像还没弄上」。**查完发现：词库数据一册不缺**

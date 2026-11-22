@@ -185,6 +185,10 @@ async function main() {
   check('无本次引入的 JS 报错', realErrors.length === 0, JSON.stringify(realErrors))
 
   await browser.close()
+  // Windows 上 browser.close() 后立刻 process.exit 会撞 libuv 的
+  // "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)"，表现为
+  // 尺子输出「失败 0 项」却退出码非 0 —— 假红。给它一点时间释放句柄。
+  await new Promise(r => setTimeout(r, 500))
   console.log('---- 失败 ' + failed + ' 项 ----')
   process.exit(failed ? 1 : 0)
 }

@@ -17,6 +17,10 @@ $py = @(
   @('check_word_lookup.py', '--http'),
   @('check_test_flow.py', '--http'),
   @('check_skip_bridge.py', '--http'),
+  @('check_book_wordsheet.py', ''),
+  @('check_book_wordsheet.py', '--selftest'),
+  @('_check_dict_format.py', ''),
+  @('check_textbook_trans.py', ''),
   @('_tb_revert_check.py', '')
 )
 $bad = 0
@@ -34,6 +38,12 @@ foreach ($f in $node) {
   if (-not (Test-Path "$p\_tools\$f")) { Write-Output "[SKIP] $f"; continue }
   $out = node "$p\_tools\$f" 2>&1
   $code = $LASTEXITCODE
+  if ($code -ne 0 -and (($out | Out-String) -match 'Assertion failed')) {
+    # node 收尾崩溃（libuv UV_HANDLE_CLOSING）：尺子本身可能是绿的，重跑一次
+    Write-Output "       (崩溃重试) $f"
+    $out = node "$p\_tools\$f" 2>&1
+    $code = $LASTEXITCODE
+  }
   $tail = ($out | Select-Object -Last 2) -join ' | '
   $tag = if ($code -eq 0) { 'PASS' } else { 'FAIL'; $bad++ }
   Write-Output "[$tag] $f -> $tail"
