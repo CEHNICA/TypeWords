@@ -239,6 +239,19 @@ defineRender(() => {
                 >
                   <IconFluentAdd20Regular />
                 </BaseIcon>
+                {/*
+                  导入词表按钮。
+                  上游声明了 import 事件、dict.vue 也传了 onImport，
+                  但工具栏里从来没 emit('import') → 那个入口是死的，/import 页面根本进不去。
+                  这里把按钮补上，导入链路才真正闭环。
+                */}
+                <BaseIcon
+                  disabled={props.readonly}
+                  title={props.readonly ? props.readonlyTip : $t('import')}
+                  onClick={() => !props.readonly && emit('import')}
+                >
+                  <IconFluentArrowImport20Regular />
+                </BaseIcon>
                 <BaseIcon
                   disabled={props.readonly || !params.list.length}
                   title={props.readonly ? props.readonlyTip : $t('change_order')}

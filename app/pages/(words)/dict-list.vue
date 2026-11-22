@@ -6,6 +6,7 @@ import { useRuntimeStore } from '@/core/stores/runtime.ts'
 import Empty from '@/components/Empty.vue'
 import DictList from '@/components/list/DictList.vue'
 import DictGroup from '@/components/list/DictGroup.vue'
+import ImportWordList from '@/components/word/ImportWordList.vue'
 import { useBaseStore } from '@/core/stores/base.ts'
 import { useRouter } from 'vue-router'
 import { computed, watch } from 'vue'
@@ -59,6 +60,13 @@ const groupedByCategoryAndTag = $computed(() => {
 
 let showSearchInput = $ref(false)
 let searchKey = $ref('')
+
+// 本地导入词表（上游只有手动加词；/import 死链的入口在词典详情页，这里是主入口）
+let showImport = $ref(false)
+
+function onImported() {
+  nav('/dict')
+}
 
 const searchList = computed<any[]>(() => {
   if (searchKey) {
@@ -120,6 +128,7 @@ watch(dict_list, val => {
         </div>
         <div class="py-1 flex flex-1 justify-end" v-else>
           <span class="page-title absolute w-full center">{{ $t('dict_list') }}</span>
+          <BaseButton type="info" @click="showImport = true">导入词表</BaseButton>
           <BaseIcon :title="$t('search')" @click="showSearchInput = true" class="z-1" icon="fluent:search-24-regular">
             <IconFluentSearch24Regular />
           </BaseIcon>
@@ -146,6 +155,7 @@ watch(dict_list, val => {
         />
       </div>
     </div>
+    <ImportWordList v-model="showImport" @imported="onImported" />
   </BasePage>
 </template>
 

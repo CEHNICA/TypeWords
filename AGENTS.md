@@ -696,3 +696,71 @@ node _tools\_diag_coverage2.mjs       # 看文章词覆盖率
 - 课文目录面板在跟打页是**右侧固定面板**，正文在中间；`article-content` 的矩形是
   `x=432, width=960`（1600 视口）。
 
+
+## 本地词表导入（2026-11-22 新增）
+
+上游 master 的词表链路是**断的**：词典详情页有「导入」按钮 → `nav('/import')`，但 `app/pages`
+下根本没有 `import.vue` → 404 死链；而且上游只有「手动一个个加词」，没有批量导入。
+本轮把整条链补齐，**纯本地、零云端、不新增 IndexedDB schema**。
+
+### 落地形态
+
+- `app/core/utils/custom-word-import.ts` —— **纯解析层**（零依赖、无 DOM、不碰 store）：
+  表头归一化与别名、分隔符探测、引号转义、列识别、单词合法性、UTF-8/GBK 解码。
+  独立成模块是为了能单独测边界用例（`_tools/check_import_parser.mjs` 直接 import 这份 TS 跑断言）。
+- `app/components/word/ImportWordList.vue` —— Dialog 形态的导入组件（Header/Body/Footer 三段式）。
+- `app/pages/import.vue` —— 接住上游死链的薄壳页，把 query（`type` / `targetId`）交给同一个组件。
+- `app/pages/(words)/dict-list.vue` —— 词典列表页加「导入词表」按钮（主入口）。
+- `app/components/BaseTable.vue` —— **补上上游缺失的导入按钮**：
+  上游声明了 `import` 事件、`dict.vue` 也传了 `onImport`，但工具栏里**从没 emit('import')** → 那个入口是死的。
+  新增按钮复用已有的 `$t('import')` key（14 个语言包都有，**不新增语言包条目**）。
+
+### 关键设计决定
+
+- **复用上游已预留的 `custom` 词书机制**（`Dict.custom` / `Word.custom` / `createCustomDict()`），
+  持久化走既有 `dataSync.saveDictState()` → **不新增 IndexedDB schema，零迁移风险**。
+- 词书 id 用 `custom-dict-<timestamp>` 前缀，不与内置词库 id（1..265）撞号。
+- **合并只对 custom / system 词典生效**：内置词典（CET-4 那些）的词条是按需下载的，
+  `shakeCommonDict()` 存盘时会把非 custom、非 system 词典的 `words` 整份清空 → 往里塞词等于白干。
+  所以目标若是内置词典，**降级成新建 + 如实文字提示**，不能让用户以为合并成功了。
+- 合并模式**只新增不覆盖**：同名单词跳过并计数（不删用户已有的编辑）。
+- 入口形态：**一个入口 + 一个出口** —— 词典列表页一个按钮 → Dialog → 选文件 → 预览 → 导入 → 落 `/dict`；
+  `/import` 页面只作死链补丁的薄壳，不进主导航。
+
+### 踩过的坑（真踩，别再踩）
+
+1. **TS/JS 注释里出现 `*/` 会提前闭合块注释** → 整页 Vite Error（写 `**/import` 这类就中招）。
+   静态尺子里有专门的「块注释成对闭合」判据（剥字符串+行注释后数 `/*` `*/`）。
+2. **`①` 不能作标识符**（那是正则里的字符范围写法，不是变量名）。
+3. **computed 在 `<script setup>` 的 script 里必须写 `.value`**：
+   裸写 `isMergeMode` 拿到的是 ref 对象，**恒为 truthy** → `if (!isMergeMode && ...)` 永远不成立
+   → 词书名永远空着 → 提交被「给这本词书起个名字」拦下。**本轮真踩了。**
+   （这个文件里 `ref()` 没被 reactivity transform 改写，编译产物里就是 `let bookName = ref("")`；
+   要确认 transform 开没开，直接看 Vite 编译产物 `/_nuxt/components/...`。）
+4. **上游 `Dialog.vue` 靠 `watch(modelValue)` 的「变化」来打开**：`visible` 初始 false，
+   `onMounted` 只在 `modelValue === undefined` 时才打开 →
+   **挂载时直接传 `true`，弹窗永远不出现**。`/import` 薄壳页必须 `ref(false)` + `onMounted` 里置 true。
+5. **取 pinia 别用 `Symbol.for('pinia')`**：pinia 用的是**本地** `Symbol('pinia')`，
+   按 `provides[Symbol.for('pinia')]` 永远拿不到 → 走 `app.config.globalProperties.$pinia`
+   （或用 `Reflect.ownKeys` 扫 provides）。
+6. **IndexedDB 里存的是 `{val, version, updated_at}` 包装**（`persistLocalState` 里 `JSON.stringify`），
+   词书在 `data.val.word.bookList`，**不是** `data.word.bookList`。
+7. **`shakeCommonDict` 会清空内置词典的 words** —— 见上面「关键设计决定」。
+
+### 尺子
+
+| 尺子 | 覆盖面 |
+| --- | --- |
+| `_tools/check_custom_import.py` | 静态：文件存在、入口挂载、不新增 IndexedDB schema、id 前缀、别名表覆盖、块注释配对 |
+| `_tools/check_import_parser.mjs` | 解析层单测 58 项：Node 24 直接 `import` 那份 TS 跑断言（引号转义、字段内换行、CRLF、BOM、GBK 回退、坏行、重复词…） |
+| `_tools/_check_custom_import_ui.js` | 浏览器端到端 40+ 项：入口 → 预览 → 导入 → Toast → store → IndexedDB → 刷新后仍在 → 合并模式 → 无云端请求 → 无页面报错 |
+
+浏览器尺子要点：干净 profile（`newContext` 不带 storageState）→ IndexedDB 是空的；
+`localStorage['tour-guide']='1'` 打掉上游 Shepherd 新手引导遮罩；
+`input[type=file]` 是 hidden 的，用 `setInputFiles`；
+BaseButton 渲染成 `div.base-button` 不是 `<button>`。
+
+**尺子自己也踩过的坑（比业务 bug 更误导人）**：
+pinia 取法写错过（`Symbol.for` → 恒 null）、IndexedDB 读路径写错过（少了 `.val`）、
+合并用例的期望值写错过（喂了整份重复的 CSV，按语义应该是「1 重复 + 1 新增」）。
+**判据写歪比数据缺陷更误导人 —— 改完尺子必须连跑 ≥3 次 + 退回验证（故意塞坏样本看它红在正确的那条）。**

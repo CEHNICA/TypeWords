@@ -16,7 +16,7 @@ $py = @(
   @('check_article_import.py', '--http'),
   @('check_word_lookup.py', '--http'),
   @('check_test_flow.py', '--http'),
-  @('check_skip_bridge.py', '--http'),
+  @('check_custom_import.py', ''),
   @('check_book_wordsheet.py', ''),
   @('check_book_wordsheet.py', '--selftest'),
   @('_check_dict_format.py', ''),
@@ -33,7 +33,7 @@ foreach ($it in $py) {
   $tag = if ($code -eq 0) { 'PASS' } else { 'FAIL'; $bad++ }
   Write-Output "[$tag] $f $arg -> $tail"
 }
-$node = @('_check_read_aloud.js', '_check_skip_bridge_ui.js', '_check_placement_ui.js', '_check_lookup_ui.js')
+$node = @('_check_read_aloud.js', '_check_placement_ui.js', '_check_lookup_ui.js', '_check_custom_import_ui.js')
 foreach ($f in $node) {
   if (-not (Test-Path "$p\_tools\$f")) { Write-Output "[SKIP] $f"; continue }
   $out = node "$p\_tools\$f" 2>&1
@@ -44,6 +44,16 @@ foreach ($f in $node) {
     $out = node "$p\_tools\$f" 2>&1
     $code = $LASTEXITCODE
   }
+  $tail = ($out | Select-Object -Last 2) -join ' | '
+  $tag = if ($code -eq 0) { 'PASS' } else { 'FAIL'; $bad++ }
+  Write-Output "[$tag] $f -> $tail"
+}
+# .mjs 尺子（Node 24 直接跑 TS 源码的解析层单测）
+$mjs = @('check_import_parser.mjs')
+foreach ($f in $mjs) {
+  if (-not (Test-Path "$p\_tools\$f")) { Write-Output "[SKIP] $f"; continue }
+  $out = node "$p\_tools\$f" 2>&1
+  $code = $LASTEXITCODE
   $tail = ($out | Select-Object -Last 2) -join ' | '
   $tag = if ($code -eq 0) { 'PASS' } else { 'FAIL'; $bad++ }
   Write-Output "[$tag] $f -> $tail"
