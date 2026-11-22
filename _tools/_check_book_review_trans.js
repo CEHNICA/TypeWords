@@ -114,6 +114,10 @@ async function main() {
     const opt = page.locator('.option').first()
     if (!(await opt.count())) break
     await opt.click({ timeout: 8000 })
+    const expandBtn = page.locator('.base-button:has-text("展开对照")').first()
+    if (await expandBtn.count()) {
+      await expandBtn.click({ timeout: 5000 }).catch(() => {})
+    }
     await page.waitForSelector('.detail-row', { timeout: 8000 }).catch(() => {})
 
     const got = await page.evaluate(() => {

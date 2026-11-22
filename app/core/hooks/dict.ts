@@ -2,7 +2,7 @@ import type { Article, Dict, TaskWords, Word } from '../types'
 import { DictType, getDefaultDict, getDefaultWord } from '../types'
 import { useBaseStore } from '../stores/base.ts'
 import { useSettingStore } from '../stores/setting.ts'
-import { _getDictDataByUrl, cloneDeep, isDictIdMatch, resourceWrap, shuffle } from '../utils'
+import { _getDictDataByUrl, cloneDeep, isDictIdMatch, isIgnoreWord, resourceWrap, shuffle } from '../utils'
 import { computed, onMounted, watch } from 'vue'
 import { DICT_LIST, DictId } from '../config/env.ts'
 import { useRuntimeStore } from '../stores/runtime.ts'
@@ -163,7 +163,7 @@ export function getCurrentStudyWord(): TaskWords {
       for (let i = start; i < words.length; i++) {
         let item = words[i]
         if (data.new.length >= perDay) break
-        if (!ignoreSet.has(item.word)) {
+        if (!isIgnoreWord(ignoreSet, item.word)) {
           data.new.push(item)
         }
         end++
@@ -186,7 +186,7 @@ export function getCurrentStudyWord(): TaskWords {
           //3、不在新词里面
           //4、到自然日就算到期
           // console.log(`单词：${word},到期时间：${dayjs(card.due).format('YYYY-MM-DD HH:mm:ss')}`)
-          let isMastered = ignoreSet.has(word)
+          let isMastered = isIgnoreWord(ignoreSet, word)
           if (isMastered) {
             waitRemoveFromFsrsData.push(word)
           }

@@ -282,6 +282,40 @@ def check_continue_after_report():
     )
 
 
+# ---------------------------------------------------------------- 6.7 查缺补漏闭环（三态筛选 + 精准导出不太清楚单词）
+def check_gap_closure_and_mastered():
+    src = read(PAGE_VUE)
+    p = read(PROGRESS_TS) if os.path.exists(PROGRESS_TS) else ""
+    check(
+        "支持三态判定（清楚 / 不太清楚模糊 / 不会）",
+        re.search(r"markFuzzy|fuzzy", src) is not None
+        and re.search(r"0 \| 1 \| 2", p) is not None,
+        "只有 0/1 二态，无法区分蒙对/模糊的单词",
+    )
+    check(
+        "清楚的词支持一键秒过（不拖慢节奏）",
+        re.search(r"markClearAndNext", src) is not None,
+        "缺少快速秒过通道",
+    )
+    check(
+        "答对后支持改标「其实是蒙的 / 标为不太清楚」",
+        re.search(r"togglePostSubmitOutcome", src) is not None
+        and re.search(r"其实是蒙的", src) is not None,
+        "四选一蒙对后无法撤回改标不太清楚",
+    )
+    check(
+        "能精准导出「仅不太清楚的单词」（不混入已会词）",
+        re.search(r"exportUnclearCsv", src) is not None
+        and re.search(r"exportUnclearTxt", src) is not None,
+        "缺少单独导出不太清楚单词的入口",
+    )
+    check(
+        "支持一键生成专属「查缺补漏」词典",
+        re.search(r"createGapDict", src) is not None,
+        "缺少把不太清楚单词转成专属练习词典的入口",
+    )
+
+
 # ---------------------------------------------------------------- 7. HTTP
 def check_http():
     for route, kw in (("/book-review", "整本"), ("/placement-test", "摸底")):
@@ -315,6 +349,7 @@ def main():
         check_robustness()
         check_answer_feedback_teaches()
         check_continue_after_report()
+        check_gap_closure_and_mastered()
     if "--http" in sys.argv:
         check_http()
 

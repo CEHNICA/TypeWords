@@ -2,7 +2,7 @@ import { getCurrentStudyWord } from '@/core/hooks/dict.ts'
 import { useBaseStore } from '@/core/stores/base.ts'
 import { useSettingStore } from '@/core/stores/setting.ts'
 import type { TaskWords, Word } from '@/core/types/types.ts'
-import { shuffle } from '@/core/utils'
+import { isIgnoreWord, shuffle } from '@/core/utils'
 
 export interface StudyTaskResult {
   taskWords: TaskWords
@@ -31,13 +31,14 @@ export function addRandomReviewWhenNoDue(taskWords: TaskWords, options: AddRando
   }
 
   const excludedWords = new Set([
-    ...options.ignoreSet,
-    ...taskWords.new.map(item => item.word),
-    ...taskWords.review.map(item => item.word),
+    ...taskWords.new.map(item => item.word.toLowerCase()),
+    ...taskWords.review.map(item => item.word.toLowerCase()),
   ])
   const learnedEnd = Math.min(options.lastLearnIndex, options.words.length)
   const randomReviewWords = shuffle(
-    options.words.slice(0, learnedEnd).filter(item => !excludedWords.has(item.word))
+    options.words
+      .slice(0, learnedEnd)
+      .filter(item => !isIgnoreWord(options.ignoreSet, item.word) && !excludedWords.has(item.word.toLowerCase()))
   ).slice(0, totalNeed)
 
   taskWords.review = taskWords.review.concat(randomReviewWords)

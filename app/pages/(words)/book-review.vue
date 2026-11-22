@@ -1,23 +1,21 @@
 <script setup lang="ts">
 /**
- * 整本复习（Book Review）
- * ==========================
- * 用户要的是：同时勾几本书 → 这几本书的单词**全部囊括进来** → 一个一个点完
- * → 总结「这几本书他掌握到什么水平」。
- *
- * 和「水平摸底」的区别：
- *  - 摸底是**抽样**：每册抽几题，快速定位年级
- *  - 整本复习是**全量**：选中的每一册的每一个词都要过一遍，一个不漏
- *
- * 莱芜三上~五下加起来 859 个词 → 必须能中断续做，所以每答一题就落一次盘。
+ * 整本复习（Book Review）—— 查缺补漏
+ * =====================================
+ * 把九年义务教育（或自选多册）的单词去重过一遍：
+ *  - 认识的词快速跳过
+ *  - 不会或不太清楚（包括蒙对）的词精准筛出并导出
+ *  - 不修改全站「已掌握」词库
  */
-import { onMounted } from 'vue'
-import { BaseButton, BasePage, Toast, VolumeIcon } from '@/base'
+import { onMounted, onUnmounted, toRaw } from 'vue'
+import { BaseButton, BaseInput, BasePage, Checkbox, Toast, VolumeIcon } from '@/base'
 import { useBaseStore } from '@/core/stores/base.ts'
-import { _getDictDataByUrl, resourceWrap } from '@/core/utils'
+import { _getDictDataByUrl, cloneDeep, resourceWrap, shuffle, useNav } from '@/core/utils'
 import { DICT_LIST } from '@/core/config/env.ts'
 import { buildQuestion } from '@/core/utils/word-test'
 import { PLACEMENT_LADDERS } from '@/core/data/placement'
+import { getDefaultDict } from '@/core/types/func'
+import { DictType, ShortcutKey } from '@/core/types/enum'
 import {
   clearBookProgress,
   loadBookProgress,
@@ -26,17 +24,15 @@ import {
   saveLastSession,
   type BookReviewProgress,
   type BookReviewSession,
+  type ReviewResultCode,
 } from '@/core/utils/placement-progress'
 import type { Question, Word } from '@/core/types/types.ts'
-import { usePlayBeep, usePlayCorrect, usePlayWordAudio } from '@/core/hooks/sound.ts'
+import { cancelWordPracticeAudio, usePlayBeep, usePlayCorrect, usePlayWordAudio } from '@/core/hooks/sound.ts'
 import { useEvents } from '@/core/utils/eventBus'
 import { useStartKeyboardEventListener } from '@/core/hooks/event.ts'
-import { ShortcutKey } from '@/core/types/enum'
 import { useSettingStore } from '@/core/stores/setting.ts'
-import { useNav } from '@/core/utils'
 
 interface BookInfo {
-  /** 在 ladder.steps 里的下标 */
   index: number
   label: string
   words: Word[]
@@ -48,6 +44,14 @@ interface PoolItem {
   bookLabel: string
 }
 
+interface UnclearRow {
+  key: string
+  word: Word
+  bookLabel: string
+  status: 'unknown' | 'fuzzy'
+  chosenWrong?: string
+}
+
 const base = useBaseStore()
 const settingStore = useSettingStore()
 const playBeep = usePlayBeep()
@@ -57,45 +61,29 @@ const { nav } = useNav()
 
 let phase = $ref<'setup' | 'loading' | 'quiz' | 'report'>('setup')
 let ladderKey = $ref('lw')
-/** 选中的册子下标（可多选） */
 let selectedBooks = $ref<number[]>([])
 let books = $ref<BookInfo[]>([])
-/** 合并去重后的全部词（这就是要过的全量题库） */
 let pool = $ref<PoolItem[]>([])
-/** 小写单词 → 1 答对 / 0 答错 */
-let results = $ref<Record<string, 0 | 1>>({})
-/** 已经过到第几个词 */
+/** 小写单词 → 0 不会 / 1 清楚 / 2 不太清楚 */
+let results = $ref<Record<string, ReviewResultCode>>({})
+let wrongChosen = $ref<Record<string, string>>({})
 let cursor = $ref(0)
 let question = $ref<Question | null>(null)
 let submitted = $ref(false)
 let selectedIndex = $ref(-1)
-/** setup 页提示「上次做到 x/y」 */
 let savedHint = $ref('')
-/** 上次已经过了多少个词（>0 说明有进度可续） */
 let savedCount = $ref(0)
-/** 最近一次复习的是哪套书（刷新后靠它找回上次的册子组合） */
 let lastSession = $ref<BookReviewSession | null>(null)
 let loadingText = $ref('正在准备词表…')
-/** 生词表分页（几百行一起渲染会卡） */
+let shuffleOrder = $ref(false)
+
 let wrongPage = $ref(0)
 let showAllWrong = $ref(false)
-/**
- * 「选项 → 英文单词」对照表是否展开。
- *
- * 用户原话：「如果你答错的话，你应该显示其他中文的单词啊。
- * 咱就说测试的归测试，测试其实也是学习的一部分。不要让这个时间浪费掉。」
- *
- * 四个选项全是中文释义，光看题干那个英文单词，只能知道自己错在哪个意思上；
- * 但**另外三个干扰项分别对应哪个英文单词**才是这题真正要学的东西 ——
- * 答错不揭示，等于这一题白做。所以提交后直接把整张对照表摊开。
- */
-let showDetail = $ref(true)
-/** 当前模式：全量过词 / 只重刷生词 */
+let reportFilter = $ref<'all' | 'unknown' | 'fuzzy'>('all')
+let reportSearch = $ref('')
+let showDetail = $ref(false)
 let mode = $ref<'full' | 'wrong'>('full')
-/** 只重刷生词时用的词池（把上一轮错的词再喂一遍，趁热打铁） */
-let wrongRetryPool = $ref<PoolItem[]>([])
-/** 重刷生词这一轮自己的结果（不能污染全量那轮的 results） */
-let retryResults = $ref<Record<string, 0 | 1>>({})
+let retryResults = $ref<Record<string, ReviewResultCode>>({})
 
 const WRONG_PAGE_SIZE = 50
 const optionLabels = ['A', 'B', 'C', 'D']
@@ -103,18 +91,17 @@ const optionLabels = ['A', 'B', 'C', 'D']
 const ladder = () => PLACEMENT_LADDERS.find(v => v.key === ladderKey) ?? PLACEMENT_LADDERS[0]
 const steps = () => ladder().steps
 const keyOf = (w: Word) => (w?.word || '').trim().toLowerCase()
-/** 当前这一轮的结果集：全量模式用 results，重刷生词用 retryResults（互不污染） */
 const curResults = () => (mode === 'wrong' ? retryResults : results)
-/** 当前这一轮这个词测过没有 */
 const hasResult = (w: Word) => Object.prototype.hasOwnProperty.call(curResults(), keyOf(w))
 
-/**
- * 本题的「选项 → 英文单词」对照表。
- *
- * 题干给一个英文单词，四个选项都是中文释义。
- * 答错时如果不把干扰项的英文露出来，这题真正要学的东西（另外三个英文单词）
- * 就白给了 —— 所以这里把四个选项各自的英文单词都摆出来，一眼看清对应关系。
- */
+function currentItemCode(): ReviewResultCode | undefined {
+  const item = pool[cursor]
+  if (!item) return undefined
+  const k = keyOf(item.word)
+  const src = curResults()
+  return Object.prototype.hasOwnProperty.call(src, k) ? src[k] : undefined
+}
+
 function optionDetail(): { label: string, cn: string, en: string, isCorrect: boolean, isChosen: boolean }[] {
   if (!question) return []
   return question.candidates.map((c, i) => ({
@@ -126,7 +113,7 @@ function optionDetail(): { label: string, cn: string, en: string, isCorrect: boo
   }))
 }
 
-/** 小学词库释义又长又全，低年级读不完 */
+/** 选项与对照表用的简洁首义 */
 function shortTrans(word: Word): string {
   const cn = word?.trans?.[0]?.cn || ''
   const first = cn.split(/[；;]/)[0].trim()
@@ -134,7 +121,12 @@ function shortTrans(word: Word): string {
   return cut || word?.word || ''
 }
 
-/** 词条清洗：小学词库有一批词条缺 relWords.rels / trans，直接访问会崩 */
+/** 导出文件用的中文释义：只取第一个意思（不截断） */
+function firstTrans(word: Word): string {
+  const cn = word?.trans?.[0]?.cn || ''
+  return cn.trim() || word?.word || ''
+}
+
 function sanitizeWord(w: Word): Word {
   if (!w) return w
   if (!Array.isArray(w.trans)) w.trans = []
@@ -146,7 +138,7 @@ function sanitizeWord(w: Word): Word {
   return w
 }
 
-// ---------------------------------------------------------------- 册子多选
+// ---------------------------------------------------------------- 册子选择
 function toggleBook(index: number) {
   const i = selectedBooks.indexOf(index)
   if (i === -1) selectedBooks = [...selectedBooks, index]
@@ -155,13 +147,37 @@ function toggleBook(index: number) {
   void refreshCurrentSaved()
 }
 
-/** 全选 / 取消全选 */
 function toggleAllBooks() {
   selectedBooks = selectedBooks.length === steps().length ? [] : steps().map((_, i) => i)
   void refreshCurrentSaved()
 }
 
-/** 估算选中的册子一共多少词（按词库清单里的 length，秒出，不用下载） */
+function selectStage(stage: 'all' | 'primary' | 'junior') {
+  const list = steps()
+  if (stage === 'all') {
+    selectedBooks = list.map((_, i) => i)
+  } else if (stage === 'primary') {
+    selectedBooks = list
+      .map((s, i) => ({ s, i }))
+      .filter(({ s, i }) => (ladderKey === 'lw' ? i < 6 : !s.label.includes('初中') && !/七年级|八年级|九年级/.test(s.label)))
+      .map(v => v.i)
+  } else {
+    selectedBooks = list
+      .map((s, i) => ({ s, i }))
+      .filter(({ s, i }) => (ladderKey === 'lw' ? i >= 6 : s.label.includes('初中') || /七年级|八年级|九年级/.test(s.label)))
+      .map(v => v.i)
+  }
+  void refreshCurrentSaved()
+}
+
+function hasJuniorSteps(): boolean {
+  return steps().some((s, i) => (ladderKey === 'lw' ? i >= 6 : s.label.includes('初中') || /七年级|八年级|九年级/.test(s.label)))
+}
+
+function hasPrimarySteps(): boolean {
+  return steps().some((s, i) => (ladderKey === 'lw' ? i < 6 : !s.label.includes('初中') && !/七年级|八年级|九年级/.test(s.label)))
+}
+
 function selectedWordCount(): number {
   const list = dictListCache
   if (!list) return 0
@@ -176,7 +192,6 @@ function selectedWordCount(): number {
   return sum
 }
 
-/** 单册词数（词库清单里的 length 之和） */
 function bookSize(index: number): number {
   const list = dictListCache
   const step = steps()[index]
@@ -189,7 +204,6 @@ function bookSize(index: number): number {
   return sum
 }
 
-/** 换教材：册子列表全变了，重选为该教材全部册子，并看看上次做到哪 */
 async function changeLadder(key: string) {
   ladderKey = key
   const l = PLACEMENT_LADDERS.find(v => v.key === key) ?? PLACEMENT_LADDERS[0]
@@ -224,7 +238,7 @@ async function loadBooks() {
           words.push(sanitizeWord(w))
         }
       } catch {
-        // 这一本拉不到就跳过，不影响别的册子
+        // 这一本拉不到就跳过
       }
     }
     out.push({ index, label: step.label, words })
@@ -233,7 +247,6 @@ async function loadBooks() {
   buildPool()
 }
 
-/** 合并选中册子的全部词，去重（同一个词在多本里出现只过一次） */
 function buildPool() {
   const seen = new Set<string>()
   const items: PoolItem[] = []
@@ -245,11 +258,11 @@ function buildPool() {
       items.push({ word: w, bookIndex: b.index, bookLabel: b.label })
     }
   }
-  pool = items
+  pool = shuffleOrder ? shuffle(items) : items
 }
 
 async function start(fresh = false) {
-  // 先把词表拉下来、合并去重，再谈进度
+  mode = 'full'
   await loadBooks()
   phase = 'loading'
   loadingText = '正在准备词表…'
@@ -257,7 +270,7 @@ async function start(fresh = false) {
   const saved = fresh ? null : await loadBookProgress(ladderKey, chosen)
   if (fresh) await clearBookProgress(ladderKey, chosen)
   results = saved?.results ? { ...saved.results } : {}
-  // 续做：找到第一个没测过的词
+  wrongChosen = saved?.wrongChosen ? { ...saved.wrongChosen } : {}
   cursor = 0
   while (cursor < pool.length && hasResult(pool[cursor].word)) cursor++
   phase = 'quiz'
@@ -265,7 +278,6 @@ async function start(fresh = false) {
 }
 
 // ---------------------------------------------------------------- 出题 / 答题
-/** 出题：题干是当前词，干扰项优先取同一册的词（不跨量级） */
 function nextQuestion() {
   if (cursor >= pool.length) return finish()
   const item = pool[cursor]
@@ -279,58 +291,100 @@ function nextQuestion() {
   question = buildQuestion(item.word, clean.length >= 3 ? clean : pool.map(p => p.word))
   submitted = false
   selectedIndex = -1
+  if (settingStore.wordSound) {
+    playWordAudio((item.word.word || '').replace(/\s*['’]\s*/g, "'").trim(), false)
+  }
 }
 
-/** 选了一个选项 */
+function applyWordOutcome(code: ReviewResultCode, wrongOptWord?: string) {
+  const item = pool[cursor]
+  if (!item) return
+  const k = keyOf(item.word)
+  if (mode === 'wrong') {
+    retryResults = { ...retryResults, [k]: code }
+  } else {
+    results = { ...results, [k]: code }
+    if (code === 1) {
+      if (wrongChosen[k]) {
+        const nextWrong = { ...wrongChosen }
+        delete nextWrong[k]
+        wrongChosen = nextWrong
+      }
+    } else if (wrongOptWord) {
+      wrongChosen = { ...wrongChosen, [k]: wrongOptWord }
+    }
+  }
+  persist()
+}
+
 function select(i: number) {
   if (submitted || !question) return
   selectedIndex = i
   submitted = true
   const correct = i === question.correctIndex
-  const k = keyOf(pool[cursor].word)
-  if (mode === 'wrong') {
-    retryResults = { ...retryResults, [k]: correct ? 1 : 0 }
-  } else {
-    results = { ...results, [k]: correct ? 1 : 0 }
-  }
+  const chosenWord = question.candidates[i]?.word?.word || ''
+  applyWordOutcome(correct ? 1 : 0, correct ? undefined : chosenWord)
   if (correct) playCorrect()
   else playBeep()
-  persist()
 }
 
-/** 「不认识」：直接记生词并跳过（几百题全靠四选一点不动） */
-function skipUnknown() {
-  if (submitted || !question) return
-  selectedIndex = -1
-  submitted = true
-  const k = keyOf(pool[cursor].word)
-  if (mode === 'wrong') {
-    retryResults = { ...retryResults, [k]: 0 }
-  } else {
-    results = { ...results, [k]: 0 }
-  }
-  playBeep()
-  persist()
-}
-
-/** 记完一题 → 下一个词 */
-function advance() {
-  if (!submitted) return
-  if (phase !== 'quiz') return
+/** 认识：直接标为清楚并跳下一题 */
+function markClearAndNext() {
+  if (phase !== 'quiz' || !question || submitted) return
+  applyWordOutcome(1)
+  playCorrect()
   cursor++
   if (cursor >= pool.length) return finish()
   nextQuestion()
 }
 
-/** 每答一题就落盘（几百题，中途关掉不能白干） */
+/** 不太清楚：标记为模糊待导出，并展开对照 */
+function markFuzzy() {
+  if (submitted || !question) return
+  selectedIndex = -1
+  submitted = true
+  applyWordOutcome(2)
+  playBeep()
+}
+
+/** 不认识：直接记生词并展开对照 */
+function skipUnknown() {
+  if (submitted || !question) return
+  selectedIndex = -1
+  submitted = true
+  applyWordOutcome(0)
+  playBeep()
+}
+
+/** 提交后纠偏（防蒙对、防手滑） */
+function togglePostSubmitOutcome(nextCode: ReviewResultCode) {
+  if (!submitted || !pool[cursor]) return
+  applyWordOutcome(nextCode)
+  if (nextCode === 1) Toast.success('已改标为「清楚」')
+  else Toast.info('已标为「不太清楚」，将收入导出清单')
+}
+
+function prevQuestion() {
+  if (cursor <= 0 || phase !== 'quiz') return
+  cursor--
+  nextQuestion()
+}
+
+function advance() {
+  if (!submitted || phase !== 'quiz') return
+  cursor++
+  if (cursor >= pool.length) return finish()
+  nextQuestion()
+}
+
 function persist() {
   const chosen = selectedBooks.length ? selectedBooks : steps().map((_, i) => i)
-  // 重刷生词是**临时的一轮**：不写全量桶，免得把上一轮已掌握的词冲掉
   if (mode === 'wrong') return
   const payload: BookReviewProgress = {
     ladderKey,
     books: chosen,
     results: { ...results },
+    wrongChosen: { ...wrongChosen },
     updatedAt: Date.now(),
   }
   void saveBookProgress(payload)
@@ -338,7 +392,6 @@ function persist() {
   void saveLastSession(lastSession)
 }
 
-/** 继续最近一次：把那套书重新选上，然后接着做 */
 async function resumeLast() {
   const s = lastSession
   if (!s) return
@@ -348,7 +401,6 @@ async function resumeLast() {
   await start(false)
 }
 
-/** 读一下最近一次复习到哪了 */
 async function refreshSavedState() {
   savedHint = ''
   savedCount = 0
@@ -365,12 +417,11 @@ async function refreshSavedState() {
       savedHint = `上次复习的是《${l?.name ?? session.ladderKey}》${names}（${session.books.length} 册），已过 ${session.done} 个词`
     }
   } catch {
-    // 读不到就当没有
+    // 忽略
   }
   await refreshCurrentSaved()
 }
 
-/** 当前这套选择自己的进度（换个册子组合，进度也是分开的） */
 async function refreshCurrentSaved() {
   savedCount = 0
   const chosen = selectedBooks.length ? selectedBooks : steps().map((_, i) => i)
@@ -378,7 +429,7 @@ async function refreshCurrentSaved() {
     const saved = await loadBookProgress(ladderKey, chosen)
     if (saved) savedCount = Object.keys(saved.results || {}).length
   } catch {
-    // 读不到就当没有
+    // 忽略
   }
 }
 
@@ -389,6 +440,19 @@ interface BookStat {
   tested: number
   right: number
   rate: number
+}
+
+function quizStatsSummary() {
+  const src = curResults()
+  let tested = 0
+  let unclear = 0
+  for (const p of pool) {
+    const k = keyOf(p.word)
+    if (!Object.prototype.hasOwnProperty.call(src, k)) continue
+    tested++
+    if (src[k] !== 1) unclear++
+  }
+  return { tested, unclear }
 }
 
 function bookStats(): BookStat[] {
@@ -411,16 +475,16 @@ function report() {
   const src = curResults()
   const tested = pool.filter(p => hasResult(p.word))
   const right = tested.filter(p => src[keyOf(p.word)] === 1).length
+  const fuzzy = tested.filter(p => src[keyOf(p.word)] === 2).length
+  const unknown = tested.filter(p => src[keyOf(p.word)] === 0).length
   const rate = tested.length ? Math.round((right / tested.length) * 100) : 0
   const stats = bookStats()
-  // 第一个掌握率 <60% 的册子 = 断层（水平上限）
   const weak = stats.find(s => s.tested > 0 && s.rate < 60)
   const allDone = tested.length === pool.length && pool.length > 0
   const knownCount = right
   const untested = pool.length - tested.length
-  // 推算：按当前掌握率外推未测部分（不把各册词数直接求和，重复词会虚高）
   const estimate = knownCount + Math.round(untested * (rate / 100))
-  // 重刷生词模式：报的是「刚才那批生词，现在记住了几个」
+
   if (mode === 'wrong') {
     const fixed = right
     const still = tested.length - right
@@ -430,53 +494,81 @@ function report() {
         ? `生词全记住了！${fixed} 个都答对了`
         : `${fixed} 个记住了，还有 ${still} 个没过`
     const advice = still === 0
-      ? '这批生词已经拿下，可以接着往下刷下一册了。'
-      : `还有 ${still} 个生词没过，继续重刷或者回到整本复习。`
-    return { tested, right, rate, stats, weak, allDone, knownCount, untested, estimate, top, advice }
+      ? '这批不太清楚的词已经拿下，可以接着往下刷下一册了。'
+      : `还有 ${still} 个词没过，继续重刷或导出这批词集中记一下。`
+    return { tested, right, fuzzy, unknown, rate, stats, weak, allDone, knownCount, untested, estimate, top, advice }
   }
+
+  const unclearTotal = fuzzy + unknown
   const top = allDone
     ? weak
       ? `《${weak.label}》还没吃透，其余都过了`
-      : '这一套全掌握了，可以进下一套书'
+      : unclearTotal === 0
+        ? '这一套全掌握了'
+        : `过完一轮：筛出 ${unclearTotal} 个待补漏单词`
     : weak
       ? `水平到《${weak.label}》为止`
       : `已过 ${tested.length} / ${pool.length} 个词`
   const advice = allDone
     ? weak
-      ? `《${weak.label}》掌握率只有 ${weak.rate}%，先把这一册的生词啃下来。`
-      : '全部词都过了一遍，这一套可以直接过了。'
+      ? `《${weak.label}》掌握率 ${weak.rate}%，建议把筛出的 ${unclearTotal} 个词导出来重点背。`
+      : unclearTotal === 0
+        ? '全部词都过了一遍，这一套可以直接过了。'
+        : `可以直接把下面 ${unclearTotal} 个不太清楚的词导出或生成专属词典攻克。`
     : weak
-      ? `《${weak.label}》掌握率 ${weak.rate}%，这里是断层。剩下的 ${untested} 个词还没过。`
-      : `继续把剩下的 ${untested} 个词过完，结论会更准。`
-  return { tested, right, rate, stats, weak, allDone, knownCount, untested, estimate, top, advice }
+      ? `《${weak.label}》掌握率 ${weak.rate}%，这里是断层，还有 ${untested} 个词未过。`
+      : `继续把剩下的 ${untested} 个词过完，结论会更完整。`
+  return { tested, right, fuzzy, unknown, rate, stats, weak, allDone, knownCount, untested, estimate, top, advice }
 }
 
-/** 生词表：全部答错的词 */
-function wrongList() {
+function wrongList(): PoolItem[] {
   const src = curResults()
-  return pool.filter(p => src[keyOf(p.word)] === 0)
+  return pool.filter(p => {
+    const code = src[keyOf(p.word)]
+    return code === 0 || code === 2
+  })
 }
 
-/** 生词表分页数据 */
-function wrongPageRows() {
-  const all = wrongList()
+function unclearRows(): UnclearRow[] {
+  const src = curResults()
+  const rows: UnclearRow[] = []
+  for (const p of pool) {
+    const k = keyOf(p.word)
+    const code = src[k]
+    if (code !== 0 && code !== 2) continue
+    rows.push({
+      key: k,
+      word: p.word,
+      bookLabel: p.bookLabel,
+      status: code === 2 ? 'fuzzy' : 'unknown',
+      chosenWrong: wrongChosen[k],
+    })
+  }
+  return rows
+}
+
+function filteredUnclearRows(): UnclearRow[] {
+  const all = unclearRows()
+  const q = reportSearch.trim().toLowerCase()
+  return all.filter(r => {
+    if (reportFilter !== 'all' && r.status !== reportFilter) return false
+    if (!q) return true
+    const cn = firstTrans(r.word).toLowerCase()
+    return r.word.word.toLowerCase().includes(q) || cn.includes(q) || r.bookLabel.toLowerCase().includes(q)
+  })
+}
+
+function wrongPageRows(): UnclearRow[] {
+  const all = filteredUnclearRows()
   if (showAllWrong) return all
   return all.slice(wrongPage * WRONG_PAGE_SIZE, (wrongPage + 1) * WRONG_PAGE_SIZE)
 }
 
-function wrongPageCount() {
-  return Math.ceil(wrongList().length / WRONG_PAGE_SIZE) || 1
+function wrongPageCount(): number {
+  return Math.ceil(filteredUnclearRows().length / WRONG_PAGE_SIZE) || 1
 }
 
-// ---------------------------------------------------------------- 继续（结束不是终点）
-/**
- * 下一册该刷哪本？
- *
- * 用户原话：「你可以结束，但是呢，结束完之后你又可以继续。」
- * 报告页如果只有「再选册子」把人踹回起点，这轮学的东西就断在这儿了。
- * 所以要能直接接着往下走：找出当前教材里**还没复习过的第一册**，
- * 自动把它加进册子组合、接着往下刷。
- */
+// ---------------------------------------------------------------- 继续
 function nextBookIndex(): number {
   const done = new Set(selectedBooks)
   const total = steps().length
@@ -486,56 +578,40 @@ function nextBookIndex(): number {
   return -1
 }
 
-/** 下一册的名字（没有就空串） */
 function nextBookLabel(): string {
   const i = nextBookIndex()
   return i >= 0 ? steps()[i].label : ''
 }
 
-/**
- * 接着刷下一册：把没复习过的那一册加进来，直接开新一轮。
- *
- * 注意：册子组合变了 → 进度桶的 key 也变了 → 直接 start(false) 会读到空桶，
- * 把上一轮已测的词全冲掉、逼着重测一遍。所以这里**继承内存里的 results**，
- * 已测过的词自然跳过，只出新册子的题。
- */
 async function continueNextBook() {
   const i = nextBookIndex()
   if (i < 0) return
   const carried = { ...results }
+  const carriedWrong = { ...wrongChosen }
   if (!selectedBooks.includes(i)) selectedBooks = [...selectedBooks, i].sort((a, b) => a - b)
   mode = 'full'
   await loadBooks()
   phase = 'loading'
   loadingText = '正在准备词表…'
   results = carried
+  wrongChosen = carriedWrong
   cursor = 0
   while (cursor < pool.length && hasResult(pool[cursor].word)) cursor++
   phase = 'quiz'
   nextQuestion()
-  // 新组合的桶也落一份（带继承来的结果），下次刷新能从这个组合续做
   persist()
 }
 
-/**
- * 只重刷生词：把刚测出来的生词再喂一遍，趁热打铁。
- *
- * 注意：重刷用的是**同一套书的同一批词**（progressKey 不变），
- * 但只把生词放进题池，所以不会把已掌握的词又过一遍。
- */
 async function retryWrong() {
   const wrong = wrongList()
   if (!wrong.length) {
-    Toast.info('这一套没有生词，全答对了，没什么好重刷的')
+    Toast.info('没有不太清楚的词，不需要重刷')
     return
   }
   mode = 'wrong'
-  wrongRetryPool = wrong
-  await loadBooks()
+  if (!books.length) await loadBooks()
   phase = 'loading'
   loadingText = '正在准备生词…'
-  // 题池换成生词；用 retryResults 单独记这一轮（生词在全量 results 里本来就是 0，
-  // 用它判断「已测」会被整个跳过）
   pool = wrong.slice()
   retryResults = {}
   cursor = 0
@@ -543,74 +619,160 @@ async function retryWrong() {
   nextQuestion()
 }
 
-// ---------------------------------------------------------------- 导出 / 错词本
-function exportCsv() {
-  const src = curResults()
-  const rows: string[][] = [['单词', '音标', '释义', '所属册子', '结果']]
-  for (const p of pool) {
-    if (!hasResult(p.word)) continue
-    const ok = src[keyOf(p.word)] === 1
+// ---------------------------------------------------------------- 导出 / 词典 / 错词本
+function downloadTextFile(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function exportUnclearCsv() {
+  const rowsData = unclearRows()
+  if (!rowsData.length) {
+    Toast.info('目前没有不太清楚的单词需要导出')
+    return
+  }
+  const rows: string[][] = [['单词', '音标', '释义', '所属册子', '状态', '误选词']]
+  for (const r of rowsData) {
     rows.push([
-      p.word.word,
-      p.word.phonetic1 || p.word.phonetic0 || '',
-      shortTrans(p.word),
-      p.bookLabel,
-      ok ? '答对' : '答错',
+      r.word.word,
+      r.word.phonetic1 || r.word.phonetic0 || '',
+      firstTrans(r.word),
+      r.bookLabel,
+      r.status === 'fuzzy' ? '不太清楚' : '不会',
+      r.chosenWrong || '',
     ])
   }
   const csv =
     '\uFEFF' +
     rows.map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `整本复习_${new Date().toISOString().slice(0, 10)}.csv`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-  Toast.success(`CSV 已导出，${rows.length - 1} 个词`)
+  downloadTextFile(
+    `不太清楚的单词_${new Date().toISOString().slice(0, 10)}.csv`,
+    csv,
+    'text/csv;charset=utf-8'
+  )
+  Toast.success(`已导出 ${rowsData.length} 个不太清楚的单词`)
 }
 
-/** 生词进错词本 */
+function exportUnclearTxt() {
+  const rowsData = unclearRows()
+  if (!rowsData.length) {
+    Toast.info('没有不太清楚的单词可导出')
+    return
+  }
+  const lines = rowsData.map(r => `${r.word.word}\t${firstTrans(r.word)}`)
+  downloadTextFile(`待补漏词表_${new Date().toISOString().slice(0, 10)}.txt`, lines.join('\r\n'))
+  Toast.success(`已导出 ${rowsData.length} 个词（TXT）`)
+}
+
+async function copyUnclearWords() {
+  const rowsData = unclearRows()
+  if (!rowsData.length) {
+    Toast.info('没有不太清楚的单词可复制')
+    return
+  }
+  const text = rowsData.map(r => `${r.word.word}  ${firstTrans(r.word)}`).join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+    Toast.success(`已复制 ${rowsData.length} 个词到剪贴板`)
+  } catch {
+    Toast.warning('浏览器限制自动复制，请使用导出 CSV / TXT')
+  }
+}
+
+function createGapDict() {
+  const rowsData = unclearRows()
+  if (!rowsData.length) {
+    Toast.info('没有不太清楚的单词，无需生成词典')
+    return
+  }
+  const name = `查缺补漏_${ladder().name.slice(0, 6)}_${new Date().toISOString().slice(5, 10)}(${rowsData.length}词)`
+  const newDict = getDefaultDict({
+    id: `custom-gap-${Date.now()}`,
+    name,
+    description: `整本复习筛出的不太清楚单词（共 ${rowsData.length} 词）`,
+    type: DictType.word,
+    custom: true,
+    words: rowsData.map(r => cloneDeep(toRaw(r.word))),
+    length: rowsData.length,
+  })
+  base.word.bookList.push(newDict)
+  Toast.success(`已生成专属词典《${name}》，在「我的词典」可专项练习`)
+}
+
+function exportCsv() {
+  const src = curResults()
+  const rows: string[][] = [['单词', '音标', '释义', '所属册子', '结果', '误选词']]
+  for (const p of pool) {
+    if (!hasResult(p.word)) continue
+    const code = src[keyOf(p.word)]
+    const label = code === 1 ? '答对' : code === 2 ? '不太清楚' : '答错'
+    rows.push([
+      p.word.word,
+      p.word.phonetic1 || p.word.phonetic0 || '',
+      firstTrans(p.word),
+      p.bookLabel,
+      label,
+      wrongChosen[keyOf(p.word)] || '',
+    ])
+  }
+  const csv =
+    '\uFEFF' +
+    rows.map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n')
+  downloadTextFile(`整本复习_${new Date().toISOString().slice(0, 10)}.csv`, csv, 'text/csv;charset=utf-8')
+  Toast.success(`全量明细 CSV 已导出，${rows.length - 1} 个词`)
+}
+
 function addWrongToBook() {
+  const rowsData = unclearRows()
   let n = 0
-  for (const p of wrongList()) {
-    const k = keyOf(p.word)
+  for (const r of rowsData) {
+    const k = r.key
     if (base.wrong.words.find(v => (v.word || '').trim().toLowerCase() === k)) continue
-    base.wrong.words.push(p.word)
+    base.wrong.words.push(cloneDeep(toRaw(r.word)))
     n++
   }
   base.wrong.length = base.wrong.words.length
-  const total = wrongList().length
+  const total = rowsData.length
   if (!total) {
-    Toast.info('这一套没有生词，全答对了，没东西要加')
+    Toast.info('没有不太清楚的词，不需要加入错词本')
     return
   }
-  if (n > 0) {
-    Toast.success(`已把 ${n} 个生词加进错词本，错词本现有 ${base.wrong.words.length} 个词`)
-  } else {
-    Toast.info(`这 ${total} 个生词错词本里已经有了，没重复添加`)
-  }
+  if (n > 0) Toast.success(`已把 ${n} 个词加进错词本，现有 ${base.wrong.words.length} 个`)
+  else Toast.info(`这 ${total} 个词错词本里已经有了`)
 }
 
 function finish() {
+  cancelWordPracticeAudio()
   phase = 'report'
   wrongPage = 0
   showAllWrong = false
+  reportFilter = 'all'
+  reportSearch = ''
 }
 
 function restart() {
+  cancelWordPracticeAudio()
   phase = 'setup'
   pool = []
   results = {}
   retryResults = {}
-  wrongRetryPool = []
+  wrongChosen = {}
   mode = 'full'
   cursor = 0
   books = []
+  void refreshSavedState()
 }
+
+onUnmounted(() => {
+  cancelWordPracticeAudio()
+})
 
 // ---------------------------------------------------------------- 键盘
 useStartKeyboardEventListener()
@@ -619,6 +781,9 @@ useEvents([
   [ShortcutKey.ChooseB, () => select(1)],
   [ShortcutKey.ChooseC, () => select(2)],
   [ShortcutKey.ChooseD, () => select(3)],
+  [ShortcutKey.ToggleSimple, () => {
+    if (phase === 'quiz' && !submitted) markClearAndNext()
+  }],
   [ShortcutKey.WordTestingNext, () => {
     if (submitted) advance()
   }],
@@ -627,16 +792,14 @@ useEvents([
 onMounted(async () => {
   ladderKey = PLACEMENT_LADDERS[0].key
   selectedBooks = PLACEMENT_LADDERS[0].steps.map((_, i) => i)
-  // 词库清单：用来显示每册多少词（不用下载词库就能预览）
   try {
     const list = await fetch(resourceWrap(DICT_LIST.WORD.ALL)).then(r => r.json())
     const map = new Map<number, { name: string, url: string, length: number }>()
     for (const item of list) map.set(Number(item.id), item)
     dictListCache = map
   } catch {
-    // 清单拉不到只是看不到词数，不影响复习
+    // 忽略
   }
-  // 看看上次做到哪儿了
   await refreshSavedState()
 })
 </script>
@@ -647,15 +810,14 @@ onMounted(async () => {
     <div v-if="phase === 'setup'" class="card flex flex-col gap-5">
       <div>
         <div class="page-title">整本复习</div>
-        <div class="text-base color-reverse-black mt-2">
-          同时勾几本书 → 这几本书的<b>全部单词</b>都囊括进来，一个一个点完，
-          结束给你一份「这几本书他掌握到什么水平」的总结：综合掌握率 + 每册掌握率 + 生词表。
+        <div class="text-base color-reverse-black mt-1">
+          选中教材与册子，把单词过一遍，结束后精准导出不会或不太清楚的词。
         </div>
       </div>
 
       <div class="flex flex-col gap-2">
         <div class="title">选教材</div>
-        <div class="flex gap-3 flex-wrap">
+        <div class="flex gap-2 flex-wrap">
           <BaseButton
             v-for="l in PLACEMENT_LADDERS"
             :key="l.key"
@@ -669,11 +831,16 @@ onMounted(async () => {
       </div>
 
       <div class="flex flex-col gap-2">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between flex-wrap gap-2">
           <div class="title">选册子（可多选）</div>
-          <BaseButton type="text" @click="toggleAllBooks">
-            {{ selectedBooks.length === steps().length ? '取消全选' : '全选' }}
-          </BaseButton>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="cursor-pointer color-link" @click="selectStage('all')">九年全套</span>
+            <span v-if="hasPrimarySteps()" class="cursor-pointer color-link" @click="selectStage('primary')">仅小学</span>
+            <span v-if="hasJuniorSteps()" class="cursor-pointer color-link" @click="selectStage('junior')">仅初中</span>
+            <BaseButton type="text" @click="toggleAllBooks">
+              {{ selectedBooks.length === steps().length ? '取消全选' : '全选' }}
+            </BaseButton>
+          </div>
         </div>
         <div class="flex gap-2 flex-wrap">
           <div
@@ -688,37 +855,32 @@ onMounted(async () => {
           </div>
         </div>
         <div class="text-sm color-reverse-black">
-          已选 {{ selectedBooks.length }} 册 · 约 {{ selectedWordCount() }} 个词
-          （去重后实际要过的词会少一些，重复词只过一遍）。
+          已选 {{ selectedBooks.length }} 册 · 约 {{ selectedWordCount() }} 个词（重复词只过一遍）。
         </div>
         <div v-if="savedHint" class="text-sm color-link">{{ savedHint }}</div>
       </div>
 
-      <div class="flex gap-4">
+      <div class="flex items-center">
+        <Checkbox v-model="shuffleOrder">随机乱序出题</Checkbox>
+      </div>
+
+      <div class="flex gap-3 flex-wrap items-center">
         <BaseButton
           type="primary"
           :disabled="selectedBooks.length === 0"
           disabled-reason="至少选一册书"
           @click="start(false)"
         >
-          {{ savedCount > 0 ? `继续（已过 ${savedCount} 个词）` : '开始复习' }}
+          {{ savedCount > 0 ? `继续（已过 ${savedCount} 词）` : '开始复习' }}
         </BaseButton>
-        <BaseButton
-          v-if="lastSession && lastSession.done > 0"
-          type="info"
-          @click="resumeLast"
-        >
-          接着上次那套（{{ lastSession.books.length }} 册，已过 {{ lastSession.done }} 词）
+        <BaseButton v-if="lastSession && lastSession.done > 0" type="info" @click="resumeLast">
+          接着上次（已过 {{ lastSession.done }} 词）
         </BaseButton>
-        <BaseButton
-          v-if="savedCount > 0"
-          type="info"
-          @click="start(true)"
-        >
-          重新开始（清掉这次选择的进度）
+        <BaseButton v-if="savedCount > 0" type="info" @click="start(true)">
+          重新开始
         </BaseButton>
-        <BaseButton type="info" @click="nav('/placement-test')">去摸底测试</BaseButton>
-        <BaseButton type="info" @click="nav('/words')">返回</BaseButton>
+        <BaseButton type="text" @click="nav('/placement-test')">去摸底测试</BaseButton>
+        <BaseButton type="text" @click="nav('/words')">返回</BaseButton>
       </div>
     </div>
 
@@ -730,20 +892,14 @@ onMounted(async () => {
 
     <!-- ============================ 3. 答题 ============================ -->
     <div v-else-if="phase === 'quiz'" class="card flex flex-col gap-4">
-      <div class="flex items-center justify-between">
-        <div class="page-title">整本复习</div>
-        <div class="text-base">
-          第 {{ cursor + 1 }} / {{ pool.length }} 个词
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <div class="page-title">{{ mode === 'wrong' ? '重刷生词' : '整本复习' }}</div>
+          <span class="text-sm color-reverse-black">
+            当前册子：{{ pool[cursor]?.bookLabel }} · 已过 {{ quizStatsSummary().tested }} · 生词 {{ quizStatsSummary().unclear }}
+          </span>
         </div>
-      </div>
-
-      <div class="flex items-center gap-3 flex-wrap">
-        <span class="text-sm px-2 py-1 rounded bg-color-second">
-          当前册子：{{ pool[cursor]?.bookLabel }}
-        </span>
-        <span class="text-sm px-2 py-1 rounded bg-color-second">
-          已过 {{ cursor }} · 答对 {{ Object.values(results).filter(v => v === 1).length }}
-        </span>
+        <div class="text-base">第 {{ cursor + 1 }} / {{ pool.length }} 个词</div>
       </div>
 
       <div class="bar-track">
@@ -753,8 +909,8 @@ onMounted(async () => {
       <div v-if="question" class="flex flex-col gap-4">
         <div class="text-4xl en-article-family flex flex-wrap items-center gap-3">
           <span>{{ question.candidates[question.correctIndex].word.word }}</span>
-          <span class="text-xl">{{ question.candidates[question.correctIndex].word.phonetic1 }}</span>
-          <VolumeIcon title="发音" :cb="() => playWordAudio(question.candidates[question.correctIndex].word.word, true)" />
+          <span class="text-xl">{{ question.candidates[question.correctIndex].word.phonetic1 || question.candidates[question.correctIndex].word.phonetic0 }}</span>
+          <VolumeIcon title="发音" :cb="() => playWordAudio(question!.candidates[question!.correctIndex].word.word, true)" />
         </div>
 
         <div class="grid gap-3">
@@ -774,21 +930,35 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="submitted" class="text-base">
-          <span v-if="selectedIndex === question.correctIndex" class="text-green-600">答对了！</span>
-          <span v-else class="text-red-600">
-            正确答案：{{ question.candidates[question.correctIndex].word.word }}
-            （{{ shortTrans(question.candidates[question.correctIndex].word) }}）
-          </span>
+        <div v-if="submitted" class="flex items-center justify-between flex-wrap gap-2 text-base">
+          <div>
+            <span v-if="currentItemCode() === 1" class="text-green-600">答对了！</span>
+            <span v-else-if="currentItemCode() === 2" class="text-amber-600">
+              已标为不太清楚：{{ question.candidates[question.correctIndex].word.word }}（{{ firstTrans(question.candidates[question.correctIndex].word) }}）
+            </span>
+            <span v-else class="text-red-600">
+              正确答案：{{ question.candidates[question.correctIndex].word.word }}（{{ firstTrans(question.candidates[question.correctIndex].word) }}）
+            </span>
+          </div>
+          <BaseButton
+            v-if="currentItemCode() === 1"
+            type="text"
+            @click="togglePostSubmitOutcome(2)"
+          >
+            其实是蒙的？标为不太清楚
+          </BaseButton>
+          <BaseButton
+            v-else
+            type="text"
+            @click="togglePostSubmitOutcome(1)"
+          >
+            其实认识（改标清楚）
+          </BaseButton>
         </div>
 
-        <!--
-          答错 = 一道现成的学习机会：四个选项的中文各对应哪个英文单词，全部摊开。
-          否则干扰项的英文就白给了，这一题等于只考了一个词。
-        -->
         <div v-if="submitted" class="detail-box">
           <div class="flex items-center justify-between flex-wrap gap-2">
-            <div class="title">这一题的四个单词（选项 ↔ 英文）</div>
+            <div class="title text-sm">这一题的四个单词（点击英文可发音）</div>
             <BaseButton type="text" @click="showDetail = !showDetail">
               {{ showDetail ? '收起' : '展开对照' }}
             </BaseButton>
@@ -803,24 +973,30 @@ onMounted(async () => {
               <span class="detail-label">{{ d.label }}</span>
               <span class="detail-cn">{{ d.cn }}</span>
               <span class="detail-arrow">→</span>
-              <span
-                class="detail-en"
-                @click="playWordAudio(d.en, true)"
-              >{{ d.en }}</span>
+              <span class="detail-en" @click="playWordAudio(d.en, true)">{{ d.en }}</span>
               <span v-if="d.isCorrect" class="detail-tag correct">正确</span>
               <span v-else-if="d.isChosen" class="detail-tag wrong">你选的</span>
             </div>
           </div>
         </div>
 
-        <div class="mt-2 flex gap-4 flex-wrap">
-          <BaseButton v-if="submitted" type="primary" @click="advance">
-            下一个[{{ settingStore.shortcutKeyMap[ShortcutKey.WordTestingNext] }}]
-          </BaseButton>
-          <BaseButton v-if="!submitted" type="info" @click="skipUnknown">
-            不认识（记生词，跳过）
-          </BaseButton>
-          <BaseButton type="info" @click="finish">结束，看结果</BaseButton>
+        <div class="mt-2 flex gap-3 flex-wrap items-center justify-between">
+          <div class="flex gap-3 flex-wrap items-center">
+            <template v-if="!submitted">
+              <BaseButton type="primary" @click="markClearAndNext">
+                清楚 · 秒过 [{{ settingStore.shortcutKeyMap[ShortcutKey.ToggleSimple] }}]
+              </BaseButton>
+              <BaseButton type="info" @click="markFuzzy">不太清楚</BaseButton>
+              <BaseButton type="info" @click="skipUnknown">不认识</BaseButton>
+            </template>
+            <BaseButton v-else type="primary" @click="advance">
+              下一个[{{ settingStore.shortcutKeyMap[ShortcutKey.WordTestingNext] }}]
+            </BaseButton>
+          </div>
+          <div class="flex gap-3 items-center">
+            <BaseButton v-if="cursor > 0" type="text" @click="prevQuestion">上一题</BaseButton>
+            <BaseButton type="info" @click="finish">结束，看结果</BaseButton>
+          </div>
         </div>
       </div>
     </div>
@@ -832,28 +1008,26 @@ onMounted(async () => {
         <div class="text-3xl font-bold mt-2">{{ report().top }}</div>
         <div class="text-base mt-1">
           已过 {{ report().tested.length }} / {{ pool.length }} 个词
-          （答对 {{ report().right }} 个，掌握率 {{ report().rate }}%）
+          （清楚 {{ report().right }} · 不太清楚 {{ report().fuzzy }} · 不会 {{ report().unknown }} · 掌握率 {{ report().rate }}%）
         </div>
       </div>
 
       <div class="grid md:grid-cols-3 gap-4">
         <div class="stat2">
           <div class="num">{{ report().knownCount }}</div>
-          <div class="txt">已确认掌握的词（个）</div>
+          <div class="txt">已确认掌握（个）</div>
         </div>
         <div class="stat2">
-          <div class="num">{{ report().estimate }}</div>
-          <div class="txt">推算词汇量（个）</div>
+          <div class="num">{{ report().fuzzy + report().unknown }}</div>
+          <div class="txt">不太清楚 / 不会（个）</div>
         </div>
         <div class="stat2">
           <div class="num">{{ report().weak?.label || '无断层' }}</div>
-          <div class="txt">断层在这一册</div>
+          <div class="txt">推算词汇量约 {{ report().estimate }}</div>
         </div>
       </div>
 
-      <div class="text-base">{{ report().advice }}</div>
-
-      <div class="flex flex-col gap-2">
+      <div v-if="mode === 'full'" class="flex flex-col gap-2">
         <div class="title">每册掌握情况</div>
         <div v-for="s in report().stats" :key="s.label" class="sweep-row flex items-center gap-3">
           <div class="w-28 text-base">{{ s.label }}</div>
@@ -868,24 +1042,70 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="flex flex-col gap-2">
-        <div class="flex items-center justify-between">
-          <div class="title">生词表（{{ wrongList().length }} 个）</div>
-          <BaseButton v-if="wrongList().length > WRONG_PAGE_SIZE" type="text" @click="showAllWrong = !showAllWrong">
-            {{ showAllWrong ? '分页显示' : '全部展开' }}
-          </BaseButton>
-        </div>
-        <div class="grid md:grid-cols-2 gap-2">
-          <div
-            v-for="p in wrongPageRows()"
-            :key="keyOf(p.word)"
-            class="option border rounded text-base flex items-center gap-2"
-          >
-            <span class="font-bold">{{ p.word.word }}</span>
-            <span class="text-sm color-reverse-black">{{ shortTrans(p.word) }}</span>
-            <span class="text-sm color-reverse-black">· {{ p.bookLabel }}</span>
+      <!-- 简洁导出区：一行直达，重点突出「导出不太清楚的单词」 -->
+      <div class="flex gap-3 flex-wrap items-center">
+        <BaseButton type="primary" @click="exportUnclearCsv">
+          导出不太清楚的单词（CSV · {{ unclearRows().length }} 词）
+        </BaseButton>
+        <BaseButton type="info" @click="createGapDict">生成专属补漏词典</BaseButton>
+        <BaseButton type="info" @click="addWrongToBook">加入错词本</BaseButton>
+        <span class="text-sm cursor-pointer color-link ml-1" @click="copyUnclearWords">复制词表</span>
+        <span class="text-sm cursor-pointer color-link" @click="exportUnclearTxt">导出 TXT</span>
+        <span class="text-sm cursor-pointer color-link" @click="exportCsv">导出全量明细</span>
+      </div>
+
+      <!-- 生词表 -->
+      <div class="flex flex-col gap-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="title">生词表（{{ filteredUnclearRows().length }} 个）</div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <BaseButton size="small" :type="reportFilter === 'all' ? 'primary' : 'info'" @click="reportFilter = 'all'; wrongPage = 0">
+              全部 ({{ unclearRows().length }})
+            </BaseButton>
+            <BaseButton size="small" :type="reportFilter === 'unknown' ? 'primary' : 'info'" @click="reportFilter = 'unknown'; wrongPage = 0">
+              不会 ({{ unclearRows().filter(r => r.status === 'unknown').length }})
+            </BaseButton>
+            <BaseButton size="small" :type="reportFilter === 'fuzzy' ? 'primary' : 'info'" @click="reportFilter = 'fuzzy'; wrongPage = 0">
+              不太清楚 ({{ unclearRows().filter(r => r.status === 'fuzzy').length }})
+            </BaseButton>
+            <BaseButton v-if="filteredUnclearRows().length > WRONG_PAGE_SIZE" type="text" @click="showAllWrong = !showAllWrong">
+              {{ showAllWrong ? '分页显示' : '全部展开' }}
+            </BaseButton>
           </div>
         </div>
+
+        <BaseInput
+          v-if="unclearRows().length > 10"
+          v-model="reportSearch"
+          placeholder="搜索单词或释义…"
+          clearable
+        />
+
+        <div class="grid md:grid-cols-2 gap-2">
+          <div
+            v-for="r in wrongPageRows()"
+            :key="r.key"
+            class="unclear-card border rounded text-base flex flex-col gap-1"
+          >
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-bold cursor-pointer detail-en" @click="playWordAudio(r.word.word, true)">
+                {{ r.word.word }}
+              </span>
+              <span v-if="r.word.phonetic1 || r.word.phonetic0" class="text-sm opacity-75">
+                {{ r.word.phonetic1 || r.word.phonetic0 }}
+              </span>
+              <span class="status-pill" :class="r.status">
+                {{ r.status === 'fuzzy' ? '不太清楚' : '不会' }}
+              </span>
+              <span class="text-xs opacity-70">· {{ r.bookLabel }}</span>
+            </div>
+            <div class="text-sm color-reverse-black">
+              {{ firstTrans(r.word) }}
+              <span v-if="r.chosenWrong" class="text-red-500 ml-2">（误选：{{ r.chosenWrong }}）</span>
+            </div>
+          </div>
+        </div>
+
         <div v-if="!showAllWrong && wrongPageCount() > 1" class="flex gap-3 items-center">
           <BaseButton type="info" size="small" @click="wrongPage = Math.max(0, wrongPage - 1)">上一页</BaseButton>
           <span class="text-sm">第 {{ wrongPage + 1 }} / {{ wrongPageCount() }} 页</span>
@@ -893,13 +1113,9 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!--
-        结束不是终点。用户原话：「你可以结束，但是呢，结束完之后你又可以继续。」
-        所以这里给两条明确的继续路径，不用把人踹回设置页重新选。
-      -->
-      <div class="continue-box flex flex-col gap-3">
-        <div class="title">接着来</div>
-        <div class="flex gap-4 flex-wrap">
+      <!-- 接着来 -->
+      <div class="continue-box flex flex-col gap-2">
+        <div class="flex gap-3 flex-wrap items-center">
           <BaseButton
             v-if="mode !== 'wrong' && nextBookIndex() >= 0"
             type="primary"
@@ -914,30 +1130,12 @@ onMounted(async () => {
           >
             只重刷生词（{{ wrongList().length }} 个）
           </BaseButton>
-          <BaseButton
-            v-if="mode === 'wrong'"
-            type="primary"
-            @click="restart"
-          >
+          <BaseButton v-if="mode === 'wrong'" type="primary" @click="restart">
             回到整本复习
           </BaseButton>
+          <BaseButton type="info" @click="restart">再选册子</BaseButton>
+          <BaseButton type="text" @click="nav('/words')">返回词表</BaseButton>
         </div>
-        <div class="text-sm color-reverse-black">
-          {{
-            mode === 'wrong'
-              ? '刚才刷的是生词。想接着往下走就回到整本复习。'
-              : nextBookIndex() >= 0
-                ? `这本教材你还没复习的是《${nextBookLabel()}》，点一下直接接着刷。`
-                : '这套教材的册子你都复习过了。'
-          }}
-        </div>
-      </div>
-
-      <div class="flex gap-4 flex-wrap">
-        <BaseButton type="primary" @click="exportCsv">导出 CSV（给老师）</BaseButton>
-        <BaseButton type="info" @click="addWrongToBook">生词加入错词本</BaseButton>
-        <BaseButton type="info" @click="restart">再选册子</BaseButton>
-        <BaseButton type="info" @click="nav('/words')">返回词表</BaseButton>
       </div>
     </div>
   </BasePage>
@@ -979,12 +1177,11 @@ onMounted(async () => {
   transition: width 0.2s;
 }
 
-/* 答错后的「选项 ↔ 英文单词」对照表：这一题真正要学的东西摊在这里 */
 .detail-box {
-  border: 1px solid var(--color-second, #eee);
+  border: 1px solid var(--color-item-border, #eee);
   border-radius: 0.4rem;
   padding: 0.75rem 1rem;
-  background: var(--color-bg-second, rgb(0 0 0 / 2%));
+  background: var(--bg-card-secend, rgb(0 0 0 / 2%));
 }
 
 .detail-row {
@@ -1043,10 +1240,29 @@ onMounted(async () => {
   }
 }
 
-/* 报告页的「接着来」区 */
+.unclear-card {
+  padding: 0.55rem 0.75rem;
+  border-color: var(--color-item-border, #e5e7eb);
+}
+
+.status-pill {
+  font-size: 0.75rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 0.25rem;
+
+  &.unknown {
+    background: rgb(239 68 68 / 15%);
+    color: rgb(220 38 38);
+  }
+
+  &.fuzzy {
+    background: rgb(245 158 11 / 16%);
+    color: rgb(217 119 6);
+  }
+}
+
 .continue-box {
-  border: 1px dashed var(--color-main-text);
-  border-radius: 0.4rem;
-  padding: 0.85rem 1rem;
+  border-top: 1px solid var(--color-item-border, #e5e7eb);
+  padding-top: 0.85rem;
 }
 </style>

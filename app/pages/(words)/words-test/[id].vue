@@ -4,7 +4,7 @@ import { BaseButton, BaseIcon, BasePage, Toast, VolumeIcon } from '@/base'
 import { useRoute, useRouter } from 'vue-router'
 import { useBaseStore } from '@/core/stores/base.ts'
 import type { Dict, Question, TaskWords, Word } from '@/core/types/types.ts'
-import { _getDictDataByUrl, getShufflePracticeWords, shuffle, useNav } from '@/core/utils'
+import { _getDictDataByUrl, getShufflePracticeWords, isIgnoreWord, shuffle, useNav } from '@/core/utils'
 import type { ShufflePracticeSetting } from '@/core/utils'
 import { useRuntimeStore } from '@/core/stores/runtime.ts'
 import { usePlayBeep, usePlayCorrect, usePlayWordAudio } from '@/core/hooks/sound.ts'
@@ -85,7 +85,7 @@ function buildTestWords() {
       const start = Math.min(roundOffset, Math.max(learned - 1, 0))
       picked = dictWords
         .slice(start, start + TEST_ROUND_SIZE)
-        .filter((w: Word) => !ignoreSet.has(w.word))
+        .filter((w: Word) => !isIgnoreWord(ignoreSet, w.word))
       roundTitle = `按学习顺序测试 · 已学 ${learned} 个词`
     }
   } else {
@@ -98,7 +98,7 @@ function buildTestWords() {
     if (fromDialog && fromDialog.length) {
       picked = toRaw(fromDialog).slice()
     } else {
-      picked = shuffle(dictWords.filter((w: Word) => !ignoreSet.has(w.word))).slice(0, TEST_ROUND_SIZE)
+      picked = shuffle(dictWords.filter((w: Word) => !isIgnoreWord(ignoreSet, w.word))).slice(0, TEST_ROUND_SIZE)
     }
     roundTitle = '随机测试'
   }

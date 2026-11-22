@@ -831,13 +831,13 @@ onUnmounted(() => {
 
     <div class="card flex flex-col md:flex-row gap-4 items-center justify-between">
       <div class="flex flex-col gap-1 min-w-0">
-        <div class="title">整本复习</div>
+        <div class="title">整本复习 · 查缺补漏</div>
         <div class="text-base color-reverse-black">
-          同时勾几本书，把这几本书的单词全部过一遍，一个不漏。
-          过完给你「这几本书掌握到什么水平」的总结：综合掌握率、每册掌握率、生词表。
+          把九年义务教育或自选多册的单词去重过一遍，快速筛出不太清楚和不会的词，
+          支持精准导出（CSV / 纯词表 / 专属补漏词典），不影响全站词库记录。
         </div>
       </div>
-      <BaseButton type="primary" @click="nav('/book-review')">去复习</BaseButton>
+      <BaseButton type="primary" @click="nav('/book-review')">去查缺补漏</BaseButton>
     </div>
 
     <div class="card flex flex-col">

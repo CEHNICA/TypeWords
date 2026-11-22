@@ -242,7 +242,8 @@ export function usePlayWordAudio() {
     wordAudio.src = url
     wordAudio.volume = settingStore.wordSoundVolume / 100
     wordAudio.playbackRate = playbackRate
-    void wordAudio.play()
+    // 快速切词时 cancelWordPracticeAudio() 会中断前一次未完成的 play()，需吞掉 AbortError 避免抛出未捕获异常
+    void wordAudio.play().catch(() => {})
 
     // 外网音频挂起（既不 onplay 也不 onerror）时不能干等 —— 超时后直接走浏览器 TTS。
     // 有道 dictvoice 在慢网下可能连上十几秒，用户等的是「立刻有声音」。

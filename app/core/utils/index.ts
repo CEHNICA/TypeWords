@@ -538,6 +538,12 @@ export function toShufflePracticeRange(startNo: number, endNo: number, max: numb
   )
 }
 
+/** 判断单词是否在忽略/已掌握集合中（大小写无关，避免 Monday 等专名漏网） */
+export function isIgnoreWord(ignoreSet: Set<string> | undefined, word?: string): boolean {
+  if (!ignoreSet || !word) return false
+  return ignoreSet.has(word) || ignoreSet.has(word.toLowerCase())
+}
+
 export function getShufflePracticeWords<T extends { word: string }>(
   words: T[],
   setting: ShufflePracticeSetting,
@@ -545,7 +551,7 @@ export function getShufflePracticeWords<T extends { word: string }>(
 ) {
   const range = normalizeShufflePracticeRange(setting.range, words.length)
   const total = Math.max(0, Math.floor(Number(setting.total) || 0))
-  const candidates = words.slice(range.start, range.end).filter(v => !ignoreSet?.has(v.word))
+  const candidates = words.slice(range.start, range.end).filter(v => !isIgnoreWord(ignoreSet, v.word))
 
   return {
     range,

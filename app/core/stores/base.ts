@@ -126,10 +126,12 @@ export const useBaseStore = defineStore('base', {
         .concat(this.simpleWords.map((v: string) => v.toLowerCase()))
     },
     knownWordsSet(): Set<string> {
-      return new Set<string>(this.known.words.map((v: Word) => v.word))
+      return new Set<string>(this.known.words.map((v: Word) => v.word.toLowerCase()))
     },
     allIgnoreWordsSet(): Set<string> {
-      return new Set<string>(this.known.words.map((v: Word) => v.word).concat(this.simpleWords.map((v: string) => v)))
+      return new Set<string>(
+        this.known.words.map((v: Word) => v.word.toLowerCase()).concat(this.simpleWords.map((v: string) => v.toLowerCase()))
+      )
     },
     sdict(): Dict {
       if (this.word.studyIndex >= 0) {

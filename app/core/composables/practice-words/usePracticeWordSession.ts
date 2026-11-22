@@ -7,7 +7,7 @@ import { useRuntimeStore } from '@/core/stores/runtime.ts'
 import type { TaskWords, Word } from '@/core/types/types.ts'
 import { WordPracticeMode } from '@/core/types/enum.ts'
 import { getDefaultWord } from '@/core/types/func.ts'
-import { cloneDeep, getShufflePracticeWords, shuffle } from '@/core/utils'
+import { cloneDeep, getShufflePracticeWords, isIgnoreWord, shuffle } from '@/core/utils'
 import { useWordOptions } from '@/core/hooks/dict.ts'
 import { useGetGradeByWrongTimes, useNextCard } from '@/core/hooks/fsrs.ts'
 import { flushStatToStore } from '@/core/composables/usePracticePersistence.ts'
@@ -257,7 +257,7 @@ export function usePracticeWordSession(options: PracticeWordSessionOptions) {
     const wordsToCheck = ignoreScope === 'remaining'
       ? store.sdict.words.slice(store.sdict.lastLearnIndex)
       : store.sdict.words
-    const ignoreCount = ignoreList.filter(key => wordsToCheck.some(word => word.word === key)).length
+    const ignoreCount = ignoreList.filter(key => wordsToCheck.some(word => word.word.toLowerCase() === key)).length
     if (store.sdict.lastLearnIndex + ignoreCount >= store.sdict.length) {
       store.sdict.complete = true
       store.sdict.lastLearnIndex = store.sdict.length
@@ -285,11 +285,11 @@ export function usePracticeWordSession(options: PracticeWordSessionOptions) {
     const taskWords = cloneDeep(options.getTaskWords())
     const ignoreSet = [store.allIgnoreWordsSet, store.knownWordsSet][settingStore.ignoreSimpleWord ? 0 : 1]
     if (getPracticeMode() === WordPracticeMode.Shuffle) {
-      taskWords.review = shuffle(taskWords.review.filter(word => !ignoreSet.has(word.word)))
+      taskWords.review = shuffle(taskWords.review.filter(word => !isIgnoreWord(ignoreSet, word.word)))
     } else {
       store.sdict.lastLearnIndex -= statStore.newWordNumber
-      taskWords.new = taskWords.new.filter(word => !ignoreSet.has(word.word))
-      taskWords.review = taskWords.review.filter(word => !ignoreSet.has(word.word))
+      taskWords.new = taskWords.new.filter(word => !isIgnoreWord(ignoreSet, word.word))
+      taskWords.review = taskWords.review.filter(word => !isIgnoreWord(ignoreSet, word.word))
     }
     return taskWords
   }
